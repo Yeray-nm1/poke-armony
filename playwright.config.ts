@@ -10,7 +10,7 @@ import { defineConfig, devices } from "@playwright/test"
  * puedas tener abierto. Si ya tienes la app servida, apunta a ella con
  * `E2E_BASE_URL` (y entonces no se levanta ningún servidor):
  *
- *   E2E_BASE_URL=https://pokearmony.vercel.app pnpm test:e2e
+ *   E2E_BASE_URL=https://poke-armony.vercel.app pnpm test:e2e
  *
  * OJO: los tests necesitan RED. La app es API-only (sin semilla local): ingiere
  * Showdown + Limitless en runtime, así que el primer arranque tarda (de ahí los

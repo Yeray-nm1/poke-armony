@@ -1,6 +1,6 @@
 # PokeArmony
 
-**[https://pokearmony.vercel.app](https://pokearmony.vercel.app)**
+**[https://poke-armony.vercel.app](https://poke-armony.vercel.app)**
 
 Asistente para **Pokémon Champions** (VGC · Reg **M-C**): analiza **tu equipo** contra
 el meta vivo, detecta **los puntos débiles del conjunto** y propone **cambios concretos**

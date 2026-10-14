@@ -12,7 +12,7 @@
 
 | | |
 |---|---|
-| Producción | https://pokearmony.vercel.app · HTTP 200 · TTFB ~0,19 s |
+| Producción | https://poke-armony.vercel.app · HTTP 200 · TTFB ~0,19 s |
 | Repo | `Yeray-nm1/poke-armony` · público · rama `main` · 54 commits · 82 ficheros |
 | Tests | 124 de núcleo puro (`src/core/*.test.ts`, `src/lib/*.test.ts`) + **7 E2E** (Playwright, `e2e/`) |
 | Stack | Next 16.4 · React 19.3 · Tailwind v4 · zustand · motion · `@smogon/calc` 0.12 |
