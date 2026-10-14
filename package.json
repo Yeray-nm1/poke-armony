@@ -1,0 +1,45 @@
+{
+  "name": "pokearmony",
+  "version": "0.1.0",
+  "private": true,
+  "author": "YerayD",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yeray-nm1/poke-armony"
+  },
+  "scripts": {
+    "demo": "tsx scripts/demo.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@smogon/calc": "^0.12.0",
+    "lucide-react": "^1.55.0",
+    "motion": "^14.1.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.3"
+  },
+  "packageManager": "pnpm@10.33.2"
+}

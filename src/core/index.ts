@@ -1,0 +1,10 @@
+// Punto de entrada del núcleo. Puro: sin I/O, sin React, sin Node.
+export * from "./types"
+export * from "./typechart"
+export * from "./meta"
+export * from "./stats"
+export * from "./sets"
+export * from "./harmony"
+export * from "./recommender"
+export * from "./showdown"
+export * from "./threat"
