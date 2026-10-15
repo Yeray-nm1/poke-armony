@@ -27,6 +27,10 @@ const MISSING_LABEL: Record<MissingField, string> = {
   nature: "sin naturaleza",
 }
 
+/** ¿Le gana mi velocidad a la amenaza en este escenario? (espejo del core). */
+const winsRace = (mine: number, opp: number, field: Field) =>
+  field === "trickroom" ? mine < opp : (field === "tailwind" ? mine * 2 : mine) > opp
+
 export function DiagnosisPanel({
   dataset,
   onOpenThreat,
@@ -115,13 +119,18 @@ export function DiagnosisPanel({
   // Sets a medias (SP sin repartir del todo, objeto o naturaleza sin elegir) y su
   // detalle para el tooltip, agrupado por lo que falta.
   const incomplete = speed.members.filter((m) => m.missing.length > 0)
-  const incompleteHint = (["sp", "item", "nature"] as MissingField[])
-    .map((k) => {
-      const names = incomplete.filter((m) => m.missing.includes(k)).map((m) => m.name)
-      return names.length ? `${MISSING_LABEL[k]}: ${names.join(", ")}` : null
-    })
-    .filter(Boolean)
-    .join(" · ")
+  const incompleteHint =
+    `Piezas a las que les falta algo por configurar — ${(["sp", "item", "nature"] as MissingField[])
+      .map((k) => {
+        const names = incomplete.filter((m) => m.missing.includes(k)).map((m) => m.name)
+        return names.length ? `${MISSING_LABEL[k]}: ${names.join(", ")}` : null
+      })
+      .filter(Boolean)
+      .join(" · ")}. Su velocidad puede ser baja solo por eso, sin que sea una decisión.`
+
+  // Amenaza elegida en el desglose de velocidad (por defecto, la más usada).
+  const [raceThreat, setRaceThreat] = useState<string | null>(null)
+  const selectedThreat = race.find((t) => t.id === raceThreat) ?? race[0] ?? null
 
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
@@ -307,22 +316,22 @@ export function DiagnosisPanel({
                         })}
                       </ul>
                       {incomplete.length > 0 && (
-                        <p
-                          className="mt-1.5 text-[10px] text-faint"
-                          title={`Sets a medias — ${incompleteHint}. Se puntúan con lo que tengan puesto, sin asumir inversión (a la oposición sí se le infiere).`}
-                        >
+                        <p className="mt-1.5 flex items-center gap-1 text-[10px] text-faint">
                           <span className="text-warn">
                             Falta completar el set en {incomplete.length} de {speed.teamSize} Pokémon
-                          </span>{" "}
-                          · su velocidad puede ser baja por eso.
+                          </span>
+                          <Hint text={incompleteHint} align="start" />
                         </p>
                       )}
                     </div>
                     <div>
-                      <p className="label mb-1.5 text-muted">Por amenaza · cuántas de tus {speed.teamSize} la superan</p>
+                      <p className="label mb-1.5 text-muted">
+                        Por amenaza · cuántas de tus {speed.teamSize} la superan
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {race.map((t) => {
                           const b = t.beats[activeField]
+                          const isSelected = selectedThreat?.id === t.id
                           const tone =
                             b === 0
                               ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
@@ -333,15 +342,45 @@ export function DiagnosisPanel({
                             <button
                               key={t.id}
                               type="button"
-                              onClick={() => onOpenThreat(t.id)}
+                              aria-pressed={isSelected}
+                              onClick={() => setRaceThreat(t.id)}
                               title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
-                              className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
+                              className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone} ${
+                                isSelected ? "ring-2 ring-fg/35" : ""
+                              }`}
                             >
                               {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
                             </button>
                           )
                         })}
                       </div>
+                      {selectedThreat && (
+                        <div className="mt-2 rounded-lg border border-line/70 bg-ink-950/40 p-2">
+                          <p className="flex flex-wrap items-baseline gap-x-1.5 text-[11px]">
+                            <span className="text-fg">{selectedThreat.name}</span>
+                            <span className="num text-faint">{selectedThreat.speed}</span>
+                            <span className="text-faint">· uso {selectedThreat.pct}%</span>
+                          </p>
+                          <ul className="mt-1.5 space-y-0.5">
+                            {speed.members.map((m) => {
+                              const before = winsRace(m.speed, selectedThreat.speed, activeField)
+                              const delta = m.speed - selectedThreat.speed
+                              return (
+                                <li key={m.id} className="flex items-center gap-2 text-[11px]">
+                                  <span className="w-24 shrink-0 truncate text-fg">{m.name}</span>
+                                  <span className="num w-7 shrink-0 text-right text-faint">{m.speed}</span>
+                                  <span className="num w-9 shrink-0 text-right text-faint">
+                                    {delta > 0 ? `+${delta}` : delta}
+                                  </span>
+                                  <span className={before ? "text-brand" : "text-bad"}>
+                                    {before ? "actúa antes" : "actúa después"}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </details>
