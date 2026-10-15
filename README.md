@@ -102,9 +102,12 @@ contra el pokedex (que usa claves sin guion).
 - El nivel **② rehacer** conserva los **SP** del set del usuario (Limitless no publica SP del
   meta) y solo se propone si el set declara naturaleza y el meta ofrece una **naturaleza
   alternativa** (es decir, un rol distinto real).
-- **Datos siempre en vivo:** el dataset se ingiere en runtime desde Showdown + Limitless y se
-  sirve desde cache. No hay copia local ni *fallback*: si una fuente no responde, la ingesta
-  falla en vez de servir datos viejos.
+- **Datos siempre en vivo, con red de seguridad:** el dataset se ingiere en runtime desde
+  Showdown + Limitless y se sirve desde cache. Cada ingesta correcta se guarda además en
+  **Vercel Blob** (`src/lib/snapshot.ts`, store `poke-armony-snapshots`); si una fuente no
+  responde (build, cold start tras deploy o caída), se sirve esa **última copia** en vez de un
+  error. Sigue siendo *API-only*: la copia solo entra como último recurso, y sin
+  `BLOB_READ_WRITE_TOKEN` (desarrollo local, tests) el módulo es un no-op.
 - **Cache en dos niveles:** la página es un *shell* estático y cachea la ingesta en el build;
   los route handlers, al ser dinámicos y correr en serverless, usan **`"use cache: remote"`**
   (Runtime Cache en Vercel) con un camino de datos sin learnsets, para no re-ingerir en cada

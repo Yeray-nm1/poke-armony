@@ -3,12 +3,16 @@
 //
 // Decisión de diseño: **API-only**. El dataset se ingiere siempre desde las
 // fuentes vivas (Showdown + roster de Champions y Limitless) y se sirve desde el
-// cache. Si una fuente no responde, la ingesta falla en vez de servir datos
-// obsoletos (y el build de Vercel necesita red para las rutas que prerenderiza).
+// cache. El build de Vercel necesita red para las rutas que prerenderiza.
+//
+// Red de seguridad: cada ingesta correcta se guarda en Vercel Blob (`./snapshot`)
+// y, si una fuente no responde, se sirve esa última copia en vez de un error.
+// Sigue siendo API-only: la copia solo entra como último recurso.
 import { cacheLife, cacheTag } from "next/cache"
 import type { Dataset, ItemDex, Meta, MoveDex, Pokedex } from "@/core/types"
 import { fetchBase } from "./dataset"
 import { fetchMeta } from "./meta"
+import { saveSnapshot, withFallback } from "./snapshot"
 
 /** Todo el dataset salvo el meta (roster, movimientos, legales, objetos y learnsets). */
 type BaseDataset = Omit<Dataset, "meta">
@@ -20,7 +24,7 @@ type BaseDataset = Omit<Dataset, "meta">
  * re-ingesta sin redeploy: `revalidateTag("data:base")` (botón "Actualizar datos").
  */
 export function getBase(): Promise<BaseDataset> {
-  return cachedBase()
+  return withFallback(["base", "base-battle"], cachedBase)
 }
 
 async function cachedBase(): Promise<BaseDataset> {
@@ -28,7 +32,9 @@ async function cachedBase(): Promise<BaseDataset> {
   cacheTag("data:base")
   if (process.env.NODE_ENV === "production") cacheLife("weeks")
   else cacheLife("hours")
-  return fetchBase()
+  const data = await fetchBase()
+  await saveSnapshot("base", data)
+  return data
 }
 
 /**
@@ -39,7 +45,7 @@ async function cachedBase(): Promise<BaseDataset> {
  * (botón "Actualizar datos" → `POST /api/refresh`).
  */
 export function getMeta(): Promise<Meta> {
-  return cachedMeta()
+  return withFallback(["meta"], cachedMeta)
 }
 
 async function cachedMeta(): Promise<Meta> {
@@ -47,7 +53,9 @@ async function cachedMeta(): Promise<Meta> {
   cacheTag("data:meta")
   // Revalida en segundo plano cada 6 h; aguanta una semana sin servir vacío.
   cacheLife({ stale: 300, revalidate: 21600, expire: 604800 })
-  return fetchMeta()
+  const data = await fetchMeta()
+  await saveSnapshot("meta", data)
+  return data
 }
 
 /** Dataset completo para componentes de servidor y route handlers. */
@@ -70,7 +78,10 @@ export type BattleData = Pick<Dataset, "pokedex" | "moves" | "legal" | "meta">
  * ~83 KB) para no acercarse al límite de 2 MB por entrada del cache remoto.
  */
 export async function getBattle(): Promise<BattleData> {
-  const [base, meta] = await Promise.all([cachedBattleBase(), cachedBattleMeta()])
+  const [base, meta] = await Promise.all([
+    withFallback(["base-battle", "base"], cachedBattleBase),
+    withFallback(["meta"], cachedBattleMeta),
+  ])
   return { pokedex: base.pokedex, moves: base.moves, legal: base.legal, meta }
 }
 
@@ -79,7 +90,9 @@ async function cachedBattleBase(): Promise<BaseDataset> {
   cacheTag("data:base")
   if (process.env.NODE_ENV === "production") cacheLife("weeks")
   else cacheLife("hours")
-  return fetchBase({ learnsets: false })
+  const data = await fetchBase({ learnsets: false })
+  await saveSnapshot("base-battle", data)
+  return data
 }
 
 async function cachedBattleMeta(): Promise<Meta> {
@@ -87,7 +100,9 @@ async function cachedBattleMeta(): Promise<Meta> {
   cacheTag("data:meta")
   // Revalida en segundo plano cada 6 h; aguanta una semana sin servir vacío.
   cacheLife({ stale: 300, revalidate: 21600, expire: 604800 })
-  return fetchMeta()
+  const data = await fetchMeta()
+  await saveSnapshot("meta", data)
+  return data
 }
 
 /** Recorta el dataset a solo lo que el motor y la UI necesitan (menos payload al cliente). */

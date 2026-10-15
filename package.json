@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@smogon/calc": "^0.12.0",
+    "@vercel/blob": "^2.8.2",
     "lucide-react": "^1.55.0",
     "motion": "^14.1.0",
     "next": "16.4.0",
