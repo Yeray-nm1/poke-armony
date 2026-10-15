@@ -173,9 +173,8 @@ function inferSpeedSp(nature: string | undefined, base: number): number {
  * - `trickroom`: se invierte el eje — bajo TR ganas a quien sea más rápido que
  *   tú (el lento actúa primero).
  *
- * Devuelve además la **banda** del equipo (más lento / mediana / más rápido, con
- * el nombre de las piezas extremas) y, por amenaza y escenario,
- * `threats[i].beats[field]` (N de N) para el desglose de la UI.
+ * Devuelve además los extremos del equipo (`fastest` / `slowest`) y, por amenaza
+ * y escenario, `threats[i].beats[field]` (N de N) para el desglose de la UI.
  */
 export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   // Velocidad real a L50 con SP, naturaleza y objeto (Choice Scarf ×1.5).
@@ -189,18 +188,6 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   const n = valid.length
   const fastest = n ? Math.max(...valid) : 0
   const slowest = n ? Math.min(...valid) : 0
-  const sorted = [...valid].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  const median = n ? (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) : 0
-  // Banda con nombre: pieza más lenta y pieza más rápida del equipo.
-  let slowestId: string | null = null
-  let fastestId: string | null = null
-  team.forEach((s, i) => {
-    const v = teamSpeeds[i]
-    if (v <= 0) return
-    if (v === slowest && !slowestId) slowestId = s.id
-    if (v === fastest && !fastestId) fastestId = s.id
-  })
 
   const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
   const total = top.reduce((a, u) => a + u.pct, 0) || 1
@@ -274,7 +261,7 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   const hasTrickRoom = team.some((s) => (s.attacks ?? []).includes("Trick Room"))
 
   return {
-    scenarios, fastest, slowest, median, teamSize: n, slowestId, fastestId,
+    scenarios, fastest, slowest, teamSize: n,
     teamSpeeds, hasTailwind, hasTrickRoom, threats, members,
   }
 }

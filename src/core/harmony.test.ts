@@ -186,11 +186,10 @@ describe("perfil de velocidad con SP reales", () => {
     const s = speedProfile(team, dex2, meta2)
     const beats = (id: string) => s.threats.find((t) => t.id === id)!.beats.none
 
-    // Banda del equipo (contexto que muestra la UI).
+    // Extremos del equipo (contexto).
     expect(s.teamSize).toBe(2)
     expect(s.slowest).toBe(100)
     expect(s.fastest).toBe(120)
-    expect(s.median).toBe(110)
 
     // Desglose: 90 la superan los dos; 109 solo el rápido; 135 y 145 ninguno.
     expect(beats("slowmon")).toBe(2)

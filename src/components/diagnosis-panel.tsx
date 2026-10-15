@@ -242,82 +242,70 @@ export function DiagnosisPanel({
               )}
             </div>
             {speed.teamSize > 0 ? (
-              <>
-                <p className="text-xs text-muted">
-                  Rango del equipo: <span className="text-fg">{speed.slowestId ? nameOf(speed.slowestId) : "?"}</span>{" "}
-                  <span className="num text-faint">{speed.slowest}</span>
-                  {" – "}
-                  <span className="text-fg">{speed.fastestId ? nameOf(speed.fastestId) : "?"}</span>{" "}
-                  <span className="num text-faint">{speed.fastest}</span> · mediana{" "}
-                  <span className="num text-faint">{speed.median}</span>
-                </p>
-                <details className="group">
-                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
-                    <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                    Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
-                  </summary>
-                  <div className="mt-2.5 space-y-3">
-                    <div>
-                      <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
-                      <ul className="space-y-1">
-                        {speed.members.map((m) => {
-                          const cov = m.coverage[activeField]
-                          return (
-                            <li key={m.id} className="flex items-center gap-2">
-                              <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
-                                {m.name}
-                              </span>
-                              <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
-                              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
-                                <span
-                                  className="block h-full rounded-full bg-brand transition-[width] duration-500"
-                                  style={{ width: `${Math.max(cov * 100, 2)}%` }}
-                                />
-                              </span>
-                              <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
-                                {Math.round(cov * 100)}%
-                              </span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                      {speed.members.some((m) => !m.invested) && (
-                        <p className="mt-1.5 text-[10px] text-warn">
-                          {speed.members.filter((m) => !m.invested).length} de {speed.teamSize} piezas sin SP de
-                          velocidad: se puntúan tal cual, sin inversión.
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="label mb-1.5 text-muted">
-                        Por amenaza · cuántas de tus {speed.teamSize} la superan
+              <details className="group">
+                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
+                  <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                  Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
+                </summary>
+                <div className="mt-2.5 space-y-3">
+                  <div>
+                    <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
+                    <ul className="space-y-1">
+                      {speed.members.map((m) => {
+                        const cov = m.coverage[activeField]
+                        return (
+                          <li key={m.id} className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
+                              {m.name}
+                            </span>
+                            <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
+                            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
+                              <span
+                                className="block h-full rounded-full bg-brand transition-[width] duration-500"
+                                style={{ width: `${Math.max(cov * 100, 2)}%` }}
+                              />
+                            </span>
+                            <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
+                              {Math.round(cov * 100)}%
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {speed.members.some((m) => !m.invested) && (
+                      <p className="mt-1.5 text-[10px] text-warn">
+                        {speed.members.filter((m) => !m.invested).length} de {speed.teamSize} piezas sin SP de
+                        velocidad: se puntúan tal cual, sin inversión.
                       </p>
-                      <div className="flex flex-wrap gap-1">
-                        {race.map((t) => {
-                          const b = t.beats[activeField]
-                          const tone =
-                            b === 0
-                              ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
-                              : b === speed.teamSize
-                                ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
-                                : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => onOpenThreat(t.id)}
-                              title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
-                              className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
-                            >
-                              {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="label mb-1.5 text-muted">Por amenaza · cuántas de tus {speed.teamSize} la superan</p>
+                    <div className="flex flex-wrap gap-1">
+                      {race.map((t) => {
+                        const b = t.beats[activeField]
+                        const tone =
+                          b === 0
+                            ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
+                            : b === speed.teamSize
+                              ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
+                              : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => onOpenThreat(t.id)}
+                            title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
+                            className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
+                          >
+                            {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-                </details>
-              </>
+                </div>
+              </details>
             ) : (
               <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
             )}
