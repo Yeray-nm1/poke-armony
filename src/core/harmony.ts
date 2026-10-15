@@ -163,7 +163,12 @@ function inferSpeedSp(nature: string | undefined, base: number): number {
  * los **tres escenarios de campo** (sin control / Tailwind / Trick Room) para
  * que la UI pueda alternarlos sin recalcular nada.
  *
- * - `none`: ganas a las amenazas más lentas que tu miembro más rápido.
+ * La referencia es **tu miembro más lento** (el cuello de botella): solo cuentas
+ * una amenaza si *incluso* el más lento le gana la carrera. Así la métrica no se
+ * solapa con la cobertura ofensiva (quién pega SÚPER efectivo vive en Amenazas) y
+ * muestra con crudeza cuánto te falta o cuánto te da el control de velocidad.
+ *
+ * - `none`: ganas a las amenazas más lentas que tu miembro más lento.
  * - `tailwind`: tus velocidades ×2.
  * - `trickroom`: se invierte el eje — bajo TR ganas a quien sea más rápido que
  *   tu miembro más lento (el lento actúa primero).
@@ -179,6 +184,16 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   const valid = teamSpeeds.filter((v) => v > 0)
   const fastest = valid.length ? Math.max(...valid) : 0
   const slowest = valid.length ? Math.min(...valid) : 0
+  // Miembro que sirve de referencia (el más lento con velocidad válida).
+  let anchorId: string | null = null
+  let anchorSpeed = Infinity
+  team.forEach((s, i) => {
+    const v = teamSpeeds[i]
+    if (v > 0 && v < anchorSpeed) {
+      anchorSpeed = v
+      anchorId = s.id
+    }
+  })
 
   const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
   const total = top.reduce((a, u) => a + u.pct, 0) || 1
@@ -194,16 +209,25 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
 
   const scenarios: Record<Field, number> = valid.length
     ? {
-        none: clamp01(credit((o) => o < fastest)),
-        tailwind: clamp01(credit((o) => o < fastest * 2)),
+        none: clamp01(credit((o) => o < slowest)),
+        tailwind: clamp01(credit((o) => o < slowest * 2)),
         trickroom: clamp01(credit((o) => o > slowest)),
       }
     : { none: 0, tailwind: 0, trickroom: 0 }
 
+  // Desglose por amenaza (para la UI): velocidad de cada una y a cuáles NO le
+  // gana la carrera el ancla, por escenario de campo.
+  const threats = top.map((u, i) => ({ id: u.id, name: u.name, pct: u.pct, speed: speeds[i] }))
+  const loses: Record<Field, string[]> = {
+    none: top.filter((_, i) => !(speeds[i] < slowest)).map((u) => u.id),
+    tailwind: top.filter((_, i) => !(speeds[i] < slowest * 2)).map((u) => u.id),
+    trickroom: top.filter((_, i) => !(speeds[i] > slowest)).map((u) => u.id),
+  }
+
   const hasTailwind = team.some((s) => (s.attacks ?? []).includes("Tailwind"))
   const hasTrickRoom = team.some((s) => (s.attacks ?? []).includes("Trick Room"))
 
-  return { scenarios, fastest, slowest, teamSpeeds, hasTailwind, hasTrickRoom }
+  return { scenarios, fastest, slowest, anchorId, teamSpeeds, hasTailwind, hasTrickRoom, threats, loses }
 }
 
 // ── 6. Sinergia ──────────────────────────────────────────────────────

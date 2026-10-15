@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { motion } from "motion/react"
-import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, toId, weakestMetrics, type Analysis, type Field, type Proposal, type Team } from "@/core"
+import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, speedProfile, toId, weakestMetrics, type Analysis, type Field, type Proposal, type Team } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
 import { Button, Gauge, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
@@ -82,21 +82,28 @@ export function DiagnosisPanel({
     return ["none", ...(mv.has("Tailwind") ? (["tailwind"] as const) : []), ...(mv.has("Trick Room") ? (["trickroom"] as const) : [])]
   }, [deferredTeam])
   const activeField = available.includes(field) ? field : "none"
-  const fields = useMemo(
-    () =>
-      analysis.speedScenarios ?? {
-        none: analysis.metrics.speed,
-        tailwind: analysis.metrics.speed,
-        trickroom: analysis.metrics.speed,
-      },
-    [analysis.speedScenarios, analysis.metrics.speed],
+  // Carrera de velocidad (ancla = miembro más lento). Se calcula por stats, igual
+  // en cliente y servidor, así que la vista previa local ya es fiel sin esperar al
+  // daño real. De aquí salen los 3 escenarios y el desglose por amenaza.
+  const speed = useMemo(
+    () => speedProfile(deferredTeam, dataset.pokedex, dataset.meta),
+    [deferredTeam, dataset],
   )
+  const fields = speed.scenarios
   const metrics = useMemo(
     () => ({ ...analysis.metrics, speed: fields[activeField] }),
     [analysis.metrics, fields, activeField],
   )
   const harmony = useMemo(() => harmonyFromMetrics(metrics), [metrics])
   const weakest = useMemo(() => weakestMetrics(metrics), [metrics])
+
+  // Amenazas a las que el ancla (más lento) NO le gana la carrera, en el escenario
+  // activo — ordenadas por uso, que es lo que más pesa.
+  const loseSet = useMemo(() => new Set(speed.loses[activeField]), [speed, activeField])
+  const losingSpeed = useMemo(
+    () => speed.threats.filter((t) => loseSet.has(t.id)).sort((a, b) => b.pct - a.pct),
+    [speed, loseSet],
+  )
 
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
@@ -228,7 +235,53 @@ export function DiagnosisPanel({
               icon={<MetricIcon metric={k} />}
             />
           ))}
-        </div>
+          </div>
+
+          <div className="space-y-1.5 border-t border-line/70 pt-3.5">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="label text-muted">Carrera de velocidad</span>
+              <span className="text-[10px] text-faint">{FIELD_LABEL[activeField]}</span>
+              {available.length === 1 && (
+                <span className="text-[10px] text-faint">· añade Tailwind o Trick Room para ver otros escenarios</span>
+              )}
+            </div>
+            {speed.anchorId ? (
+              <>
+                <p className="text-xs text-muted">
+                  Ancla (miembro más lento): <span className="text-fg">{nameOf(speed.anchorId)}</span>{" "}
+                  <span className="num text-faint">{speed.slowest}</span> · le gana a{" "}
+                  <span
+                    className={`font-semibold ${
+                      speed.threats.length - losingSpeed.length >= speed.threats.length / 2 ? "text-brand" : "text-warn"
+                    }`}
+                  >
+                    {speed.threats.length - losingSpeed.length}
+                  </span>{" "}
+                  de {speed.threats.length}
+                </p>
+                {losingSpeed.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                    <span className="text-faint">Pierde contra:</span>
+                    {losingSpeed.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => onOpenThreat(t.id)}
+                        title={`Velocidad ${t.speed} · uso ${t.pct}%`}
+                        className="rounded-md border border-bad/30 bg-bad/10 px-1.5 py-0.5 text-bad transition-colors hover:bg-bad/20"
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-brand">Le gana la carrera a todas las amenazas del top.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
+            )}
+          </div>
         </div>
 
         <div className="surface-inset relative p-4">

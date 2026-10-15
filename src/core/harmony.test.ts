@@ -169,6 +169,26 @@ describe("perfil de velocidad con SP reales", () => {
     expect(s1.scenarios.trickroom).toBeGreaterThan(s2.scenarios.trickroom)
   })
 
+  it("usa el miembro más lento como ancla de la carrera (no el más rápido)", () => {
+    const team: Team = [
+      mon("me", ["Protect"]), // base 100 ⇒ 120 de velocidad
+      mon("slowmon", ["Protect"]), // base 80 ⇒ 100 de velocidad
+    ]
+    const s = speedProfile(team, fastDex, fastMeta)
+    expect(s.fastest).toBe(120)
+    expect(s.slowest).toBe(100)
+    expect(s.anchorId).toBe("slowmon")
+    // Se mide contra el ancla (100), no contra el más rápido (120): solo supera a
+    // slowmon (90) ⇒ 1/3. Si usara el más rápido (120) seguiría siendo 1/3 aquí,
+    // pero el ancla es la que manda (ver `anchorId`).
+    expect(s.scenarios.none).toBeCloseTo(50 / 150, 5)
+    expect(s.loses.none).toEqual(["scarfmon", "fastmon"])
+    // Bajo Trick Room gana a las más rápidas que el ancla: scarfmon y fastmon.
+    expect(s.loses.trickroom).toEqual(["slowmon"])
+    // El desglose expone la velocidad real de cada amenaza (Brave + Scarf).
+    expect(s.threats.find((t) => t.id === "scarfmon")?.speed).toBe(135)
+  })
+
   it("infiere los SP de la oposición de su naturaleza y aplica Choice Scarf", () => {
     // Miembro a 120 de velocidad (base 100 sin inversión).
     const team: Team = [mon("me", ["Protect"])]
