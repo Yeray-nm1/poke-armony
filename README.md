@@ -107,7 +107,8 @@ contra el pokedex (que usa claves sin guion).
   **Vercel Blob** (`src/lib/snapshot.ts`, store `poke-armony-snapshots`); si una fuente no
   responde (build, cold start tras deploy o caída), se sirve esa **última copia** en vez de un
   error. Sigue siendo *API-only*: la copia solo entra como último recurso, y sin
-  `BLOB_READ_WRITE_TOKEN` (desarrollo local, tests) el módulo es un no-op.
+  `BLOB_READ_WRITE_TOKEN` (desarrollo local, tests) el módulo es un no-op. Cuando se sirve la
+  copia, la cabecera lo avisa con un chip **"datos en caché"** y la fecha del último dato bueno.
 - **Cache en dos niveles:** la página es un *shell* estático y cachea la ingesta en el build;
   los route handlers, al ser dinámicos y correr en serverless, usan **`"use cache: remote"`**
   (Runtime Cache en Vercel) con un camino de datos sin learnsets, para no re-ingerir en cada

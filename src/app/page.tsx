@@ -1,5 +1,5 @@
 import { Workspace } from "@/components/workspace"
-import { getDataset, slimDataset } from "@/lib/data"
+import { getDatasetStatus, slimDataset, type DataStatus } from "@/lib/data"
 
 // La página depende por completo del dataset (meta vivo + base), así que no
 // puede ofrecer un App Shell instantáneo: permitimos que bloquee. No la hace
@@ -19,12 +19,13 @@ function MissingData() {
 }
 
 export default async function Home() {
-  let dataset: ReturnType<typeof slimDataset> | null = null
+  let payload: { dataset: ReturnType<typeof slimDataset>; status: DataStatus } | null = null
   try {
-    dataset = slimDataset(await getDataset())
+    const { dataset, status } = await getDatasetStatus()
+    payload = { dataset: slimDataset(dataset), status }
   } catch {
-    dataset = null
+    payload = null
   }
-  if (!dataset) return <MissingData />
-  return <Workspace dataset={dataset} />
+  if (!payload) return <MissingData />
+  return <Workspace dataset={payload.dataset} status={payload.status} />
 }

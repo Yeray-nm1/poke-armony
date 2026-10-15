@@ -23,8 +23,8 @@ type BaseDataset = Omit<Dataset, "meta">
  * que en producción viven una semana y en desarrollo una hora. Para forzar su
  * re-ingesta sin redeploy: `revalidateTag("data:base")` (botón "Actualizar datos").
  */
-export function getBase(): Promise<BaseDataset> {
-  return withFallback(["base", "base-battle"], cachedBase)
+export async function getBase(): Promise<BaseDataset> {
+  return (await withFallback(["base", "base-battle"], cachedBase)).data
 }
 
 async function cachedBase(): Promise<BaseDataset> {
@@ -44,8 +44,8 @@ async function cachedBase(): Promise<BaseDataset> {
  * Para refrescarlo sin redeploy basta con `revalidateTag("data:meta")`
  * (botón "Actualizar datos" → `POST /api/refresh`).
  */
-export function getMeta(): Promise<Meta> {
-  return withFallback(["meta"], cachedMeta)
+export async function getMeta(): Promise<Meta> {
+  return (await withFallback(["meta"], cachedMeta)).data
 }
 
 async function cachedMeta(): Promise<Meta> {
@@ -58,10 +58,38 @@ async function cachedMeta(): Promise<Meta> {
   return data
 }
 
+/** Frescura del dataset que sirve la página (para la cabecera). */
+export interface DataStatus {
+  /** Última agregación del meta (ISO), si la hay. */
+  metaAt?: string
+  /** `true` si algún dataset se sirvió desde la copia de Blob (fuentes caídas). */
+  stale: boolean
+  /** Instante de la copia de Blob usada, si hubo *fallback*. */
+  savedAt?: string
+}
+
+/**
+ * Dataset completo **y** su frescura, en una sola pasada de ingesta. Lo usa la
+ * página para avisar en la cabecera cuando se están sirviendo datos guardados.
+ */
+export async function getDatasetStatus(): Promise<{ dataset: Dataset; status: DataStatus }> {
+  const [base, meta] = await Promise.all([
+    withFallback(["base", "base-battle"], cachedBase),
+    withFallback(["meta"], cachedMeta),
+  ])
+  return {
+    dataset: { ...base.data, meta: meta.data },
+    status: {
+      metaAt: meta.data.generatedAt,
+      stale: base.stale || meta.stale,
+      savedAt: base.savedAt ?? meta.savedAt,
+    },
+  }
+}
+
 /** Dataset completo para componentes de servidor y route handlers. */
 export async function getDataset(): Promise<Dataset> {
-  const [base, meta] = await Promise.all([getBase(), getMeta()])
-  return { ...base, meta }
+  return (await getDatasetStatus()).dataset
 }
 
 /** Datos que necesita el motor en los route handlers (`@smogon/calc`): sin learnsets. */
@@ -82,7 +110,7 @@ export async function getBattle(): Promise<BattleData> {
     withFallback(["base-battle", "base"], cachedBattleBase),
     withFallback(["meta"], cachedBattleMeta),
   ])
-  return { pokedex: base.pokedex, moves: base.moves, legal: base.legal, meta }
+  return { pokedex: base.data.pokedex, moves: base.data.moves, legal: base.data.legal, meta: meta.data }
 }
 
 async function cachedBattleBase(): Promise<BaseDataset> {

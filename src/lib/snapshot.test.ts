@@ -80,20 +80,24 @@ describe("loadSnapshot", () => {
 })
 
 describe("withFallback", () => {
-  it("devuelve el resultado de load cuando va bien (sin tocar Blob)", async () => {
+  it("devuelve el resultado de load cuando va bien (sin tocar Blob, stale=false)", async () => {
     const load = vi.fn(async () => ({ ok: true }))
-    await expect(withFallback(["base", "base-battle"], load)).resolves.toEqual({ ok: true })
+    await expect(withFallback(["base", "base-battle"], load)).resolves.toEqual({ data: { ok: true }, stale: false })
     expect(head).not.toHaveBeenCalled()
   })
 
-  it("si load falla, usa el primer snapshot disponible (orden de preferencia)", async () => {
+  it("si load falla, usa el primer snapshot disponible y marca stale + savedAt", async () => {
     process.env[TOKEN] = "tok"
     head.mockResolvedValue({ url: "https://blob/base.json" })
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ savedAt: "x", data: { from: "base" } }))))
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ savedAt: "2026-10-01T00:00:00.000Z", data: { from: "base" } }))))
     const load = vi.fn(async () => {
       throw new Error("fuente caída")
     })
-    await expect(withFallback(["base", "base-battle"], load)).resolves.toEqual({ from: "base" })
+    await expect(withFallback(["base", "base-battle"], load)).resolves.toEqual({
+      data: { from: "base" },
+      stale: true,
+      savedAt: "2026-10-01T00:00:00.000Z",
+    })
   })
 
   it("re-lanza el error original si no hay ninguna copia", async () => {

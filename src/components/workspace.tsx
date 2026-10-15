@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import type { Analysis, Dataset, Proposal } from "@/core"
+import type { DataStatus } from "@/lib/data"
 import { useTeam } from "@/lib/store"
 import { CompareDialog } from "./compare-dialog"
 import { DiagnosisPanel } from "./diagnosis-panel"
@@ -30,7 +31,7 @@ function formatMetaDate(iso?: string): string | null {
   }).format(d)
 }
 
-export function Workspace({ dataset }: { dataset: Dataset }) {
+export function Workspace({ dataset, status }: { dataset: Dataset; status: DataStatus }) {
   const [dialog, setDialog] = useState<DialogKind>(null)
   const [threatId, setThreatId] = useState<string | null>(null)
   const [comparison, setComparison] = useState<{ proposal: Proposal; base: Analysis } | null>(null)
@@ -67,7 +68,9 @@ export function Workspace({ dataset }: { dataset: Dataset }) {
     return [...moves].sort()
   }, [dataset])
 
-  const metaDate = formatMetaDate(dataset.meta.generatedAt)
+  const metaDate = formatMetaDate(status.metaAt)
+  // Fecha de la copia de Blob, solo cuando se está sirviendo un dato guardado.
+  const staleDate = formatMetaDate(status.savedAt)
 
   return (
     <>
@@ -96,6 +99,16 @@ export function Workspace({ dataset }: { dataset: Dataset }) {
             <h1 className="font-display text-2xl font-bold leading-none tracking-tight">PokeArmony</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Chip tone="info">Reg {dataset.meta.format}</Chip>
+              {status.stale && (
+                <Chip
+                  tone="warn"
+                  title={`Las fuentes vivas no respondieron; se muestran los últimos datos guardados${
+                    staleDate ? ` (del ${staleDate})` : ""
+                  }.`}
+                >
+                  datos en caché
+                </Chip>
+              )}
               <span className="num text-[11px] tracking-wide text-faint">
                 {dataset.meta.teams} equipos
                 <span className="hidden sm:inline">
@@ -103,7 +116,7 @@ export function Workspace({ dataset }: { dataset: Dataset }) {
                   {dataset.meta.tournaments} torneos
                 </span>
                 {metaDate && (
-                  <span className="hidden lg:inline">
+                  <span className={status.stale ? "inline" : "hidden lg:inline"}>
                     <span className="mx-1.5 text-line-2">{"//"}</span>
                     actualizado {metaDate}
                   </span>

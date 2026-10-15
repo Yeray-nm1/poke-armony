@@ -60,15 +60,23 @@ export async function loadSnapshot<T>(name: string): Promise<Snapshot<T> | null>
  * El *write-through* va aparte, dentro de cada función `"use cache"`, para que
  * solo se guarde cuando de verdad hay una ingesta (no en cada acierto de cache).
  */
-export async function withFallback<T>(names: readonly string[], load: () => Promise<T>): Promise<T> {
+export interface Fetched<T> {
+  data: T
+  /** `true` si la fuente viva falló y `data` salió de la copia de Blob. */
+  stale: boolean
+  /** Instante de la copia usada (solo presente si `stale`). */
+  savedAt?: string
+}
+
+export async function withFallback<T>(names: readonly string[], load: () => Promise<T>): Promise<Fetched<T>> {
   try {
-    return await load()
+    return { data: await load(), stale: false }
   } catch (err) {
     for (const name of names) {
       const snapshot = await loadSnapshot<T>(name)
       if (snapshot) {
         console.warn(`[snapshot] "${names[0]}" no disponible; uso "${name}" del ${snapshot.savedAt}`)
-        return snapshot.data
+        return { data: snapshot.data, stale: true, savedAt: snapshot.savedAt }
       }
     }
     throw err
