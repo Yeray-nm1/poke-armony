@@ -47,9 +47,13 @@ métricas más bajas; el recomendador es contrafactual (puntúa el equipo antes/
 de cada edición y rankea por **Δ armonía**), de menor a mayor invasividad:
 ① ajuste → ② rehacer → ③ sustitución (cualquier Pokémon legal; el uso del meta solo ordena).
 
-La **velocidad** mide la carrera real frente al top del meta (ponderada por uso; SP,
+La **velocidad** mide, por cada amenaza del top, **cuántos de tus miembros le ganan
+la carrera**; la métrica es la media de esas fracciones ponderada por uso (SP,
 naturaleza y objeto reales del usuario; de la oposición se infieren los SP de su
-naturaleza más común y se aplica el **Choice Scarf**). El **control de velocidad**
+naturaleza más común y se aplica el **Choice Scarf**). No ancla en un extremo del
+equipo —ni el más rápido ni el más lento—, así que un muro lento solo resta 1/N por
+amenaza y un soporte rápido no infla; el desglose muestra la banda del equipo
+(más lento / mediana / más rápido) como contexto. El **control de velocidad**
 (Tailwind / Trick Room) **no puntúa como rol**: la UI ofrece un **selector de campo**
 que alterna entre los tres escenarios **precalculados** —sin control / Tailwind ×2 /
 Trick Room invertido— y recompone el gauge al instante, sin recalcular.

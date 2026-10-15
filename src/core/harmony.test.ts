@@ -169,24 +169,41 @@ describe("perfil de velocidad con SP reales", () => {
     expect(s1.scenarios.trickroom).toBeGreaterThan(s2.scenarios.trickroom)
   })
 
-  it("usa el miembro más lento como ancla de la carrera (no el más rápido)", () => {
-    const team: Team = [
-      mon("me", ["Protect"]), // base 100 ⇒ 120 de velocidad
-      mon("slowmon", ["Protect"]), // base 80 ⇒ 100 de velocidad
-    ]
-    const s = speedProfile(team, fastDex, fastMeta)
-    expect(s.fastest).toBe(120)
+  it("mide por fracción del equipo: cuántos de tus miembros superan a cada amenaza", () => {
+    // Amenaza de velocidad intermedia (109) para que solo uno de los dos miembros
+    // la supere: así se ve que el crédito es fraccionario (N de N) y que un solo
+    // miembro lento no hunde la métrica.
+    const dex2: Pokedex = {
+      ...fastDex,
+      midmon: { name: "Midmon", types: ["Normal"], baseStats: { ...spe80, spe: 89 } },
+    }
+    const meta2: Meta = {
+      ...fastMeta,
+      usage: [...fastMeta.usage, { id: "midmon", name: "Midmon", count: 50, pct: 50 }],
+      byId: { ...fastMeta.byId, midmon: { moves: [], items: [], abilities: [], natures: [{ name: "Hardy", pct: 100 }] } },
+    }
+    const team: Team = [mon("me", ["Protect"]), mon("slowmon", ["Protect"])] // 120 y 100
+    const s = speedProfile(team, dex2, meta2)
+    const beats = (id: string) => s.threats.find((t) => t.id === id)!.beats.none
+
+    // Banda del equipo (contexto que muestra la UI).
+    expect(s.teamSize).toBe(2)
     expect(s.slowest).toBe(100)
-    expect(s.anchorId).toBe("slowmon")
-    // Se mide contra el ancla (100), no contra el más rápido (120): solo supera a
-    // slowmon (90) ⇒ 1/3. Si usara el más rápido (120) seguiría siendo 1/3 aquí,
-    // pero el ancla es la que manda (ver `anchorId`).
-    expect(s.scenarios.none).toBeCloseTo(50 / 150, 5)
-    expect(s.loses.none).toEqual(["scarfmon", "fastmon"])
-    // Bajo Trick Room gana a las más rápidas que el ancla: scarfmon y fastmon.
-    expect(s.loses.trickroom).toEqual(["slowmon"])
-    // El desglose expone la velocidad real de cada amenaza (Brave + Scarf).
-    expect(s.threats.find((t) => t.id === "scarfmon")?.speed).toBe(135)
+    expect(s.fastest).toBe(120)
+    expect(s.median).toBe(110)
+
+    // Desglose: 90 la superan los dos; 109 solo el rápido; 135 y 145 ninguno.
+    expect(beats("slowmon")).toBe(2)
+    expect(beats("midmon")).toBe(1)
+    expect(beats("scarfmon")).toBe(0)
+    expect(beats("fastmon")).toBe(0)
+
+    // Métrica = media de fracciones ponderada por uso: (1×50 + 0,5×50 + 0 + 0) / 200.
+    expect(s.scenarios.none).toBeCloseTo(75 / 200, 5)
+    // Tailwind ×2: los dos superan a todas ⇒ 1.
+    expect(s.scenarios.tailwind).toBeCloseTo(1, 5)
+    // Trick Room (invertido): (0 + 0,5 + 1 + 1) × 50 / 200.
+    expect(s.scenarios.trickroom).toBeCloseTo(125 / 200, 5)
   })
 
   it("infiere los SP de la oposición de su naturaleza y aplica Choice Scarf", () => {

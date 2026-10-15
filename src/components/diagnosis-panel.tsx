@@ -97,13 +97,8 @@ export function DiagnosisPanel({
   const harmony = useMemo(() => harmonyFromMetrics(metrics), [metrics])
   const weakest = useMemo(() => weakestMetrics(metrics), [metrics])
 
-  // Amenazas a las que el ancla (más lento) NO le gana la carrera, en el escenario
-  // activo — ordenadas por uso, que es lo que más pesa.
-  const loseSet = useMemo(() => new Set(speed.loses[activeField]), [speed, activeField])
-  const losingSpeed = useMemo(
-    () => speed.threats.filter((t) => loseSet.has(t.id)).sort((a, b) => b.pct - a.pct),
-    [speed, loseSet],
-  )
+  // Desglose de la carrera, ordenado por uso (lo que más pesa en la métrica).
+  const race = useMemo(() => [...speed.threats].sort((a, b) => b.pct - a.pct), [speed])
 
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
@@ -245,38 +240,39 @@ export function DiagnosisPanel({
                 <span className="text-[10px] text-faint">· añade Tailwind o Trick Room para ver otros escenarios</span>
               )}
             </div>
-            {speed.anchorId ? (
+            {speed.teamSize > 0 ? (
               <>
                 <p className="text-xs text-muted">
-                  Ancla (miembro más lento): <span className="text-fg">{nameOf(speed.anchorId)}</span>{" "}
-                  <span className="num text-faint">{speed.slowest}</span> · le gana a{" "}
-                  <span
-                    className={`font-semibold ${
-                      speed.threats.length - losingSpeed.length >= speed.threats.length / 2 ? "text-brand" : "text-warn"
-                    }`}
-                  >
-                    {speed.threats.length - losingSpeed.length}
-                  </span>{" "}
-                  de {speed.threats.length}
+                  Rango del equipo: <span className="text-fg">{speed.slowestId ? nameOf(speed.slowestId) : "?"}</span>{" "}
+                  <span className="num text-faint">{speed.slowest}</span>
+                  {" – "}
+                  <span className="text-fg">{speed.fastestId ? nameOf(speed.fastestId) : "?"}</span>{" "}
+                  <span className="num text-faint">{speed.fastest}</span> · mediana{" "}
+                  <span className="num text-faint">{speed.median}</span> · cada chip: cuántos de tus {speed.teamSize}{" "}
+                  superan a la amenaza
                 </p>
-                {losingSpeed.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1 text-[11px]">
-                    <span className="text-faint">Pierde contra:</span>
-                    {losingSpeed.map((t) => (
+                <div className="flex flex-wrap gap-1">
+                  {race.map((t) => {
+                    const b = t.beats[activeField]
+                    const tone =
+                      b === 0
+                        ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
+                        : b === speed.teamSize
+                          ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
+                          : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
+                    return (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => onOpenThreat(t.id)}
-                        title={`Velocidad ${t.speed} · uso ${t.pct}%`}
-                        className="rounded-md border border-bad/30 bg-bad/10 px-1.5 py-0.5 text-bad transition-colors hover:bg-bad/20"
+                        title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
+                        className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
                       >
-                        {t.name}
+                        {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
                       </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-brand">Le gana la carrera a todas las amenazas del top.</p>
-                )}
+                    )
+                  })}
+                </div>
               </>
             ) : (
               <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
