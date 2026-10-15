@@ -6,7 +6,7 @@ import { ChevronDown } from "lucide-react"
 import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, speedProfile, toId, weakestMetrics, type Analysis, type Field, type Proposal, type Team } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
-import { Button, Gauge, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
+import { Button, Gauge, Hint, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
 
 const FIELD_LABEL: Record<Field, string> = {
   none: "Sin control",
@@ -101,6 +101,10 @@ export function DiagnosisPanel({
   // Desglose de la carrera, ordenado por uso (lo que más pesa en la métrica).
   const race = useMemo(() => [...speed.threats].sort((a, b) => b.pct - a.pct), [speed])
 
+  // Extremos del equipo para la línea de resumen (banda, sin mediana).
+  const slowMember = speed.members.length ? speed.members[speed.members.length - 1] : null
+  const fastMember = speed.members.length ? speed.members[0] : null
+
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
 
@@ -191,41 +195,16 @@ export function DiagnosisPanel({
         </div>
 
         <div className="space-y-3 border-t border-line/70 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="label text-muted">Métricas de armonía</span>
-            {available.length > 1 && (
-              <div
-                role="radiogroup"
-                aria-label="Escenario de campo para la velocidad"
-                className="flex items-center gap-0.5 rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5"
-              >
-                {available.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    role="radio"
-                    aria-checked={activeField === f}
-                    onClick={() => setField(f)}
-                    title={FIELD_HINT[f]}
-                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                      activeField === f
-                        ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
-                        : "text-muted hover:bg-ink-800/60 hover:text-fg"
-                    }`}
-                  >
-                    {f === "none" ? null : <MetricIcon metric="speed" />}
-                    {FIELD_LABEL[f]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <span className="label text-muted">Métricas de armonía</span>
           <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-          {Object.entries(metrics).map(([k, v]) => (
+          {Object.entries(metrics)
+            // La velocidad no se muestra aquí: su detalle vive en «Carrera de velocidad».
+            .filter(([k]) => k !== "speed")
+            .map(([k, v]) => (
             <MetricBar
               key={k}
               label={METRIC_LABEL[k] ?? k}
-              hint={k === "speed" && activeField !== "none" ? `${METRIC_HINT[k]} · Escenario: ${FIELD_LABEL[activeField]}.` : METRIC_HINT[k]}
+              hint={METRIC_HINT[k]}
               value={v}
               invert={k === "redundancy"}
               icon={<MetricIcon metric={k} />}
@@ -234,78 +213,121 @@ export function DiagnosisPanel({
           </div>
 
           <div className="space-y-1.5 border-t border-line/70 pt-3.5">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="label text-muted">Carrera de velocidad</span>
-              <span className="text-[10px] text-faint">{FIELD_LABEL[activeField]}</span>
-              {available.length === 1 && (
-                <span className="text-[10px] text-faint">· añade Tailwind o Trick Room para ver otros escenarios</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5">
+                <span className="label text-muted">Carrera de velocidad</span>
+                <Hint text={METRIC_HINT.speed} />
+              </span>
+              {available.length > 1 ? (
+                <div
+                  role="radiogroup"
+                  aria-label="Escenario de campo para la velocidad"
+                  className="flex items-center gap-0.5 rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5"
+                >
+                  {available.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      role="radio"
+                      aria-checked={activeField === f}
+                      onClick={() => setField(f)}
+                      title={FIELD_HINT[f]}
+                      className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        activeField === f
+                          ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
+                          : "text-muted hover:bg-ink-800/60 hover:text-fg"
+                      }`}
+                    >
+                      {f === "none" ? null : <MetricIcon metric="speed" />}
+                      {FIELD_LABEL[f]}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[10px] text-faint">añade Tailwind o Trick Room para ver otros escenarios</span>
               )}
             </div>
             {speed.teamSize > 0 ? (
-              <details className="group">
-                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
-                  <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                  Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
-                </summary>
-                <div className="mt-2.5 space-y-3">
-                  <div>
-                    <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
-                    <ul className="space-y-1">
-                      {speed.members.map((m) => {
-                        const cov = m.coverage[activeField]
-                        return (
-                          <li key={m.id} className="flex items-center gap-2">
-                            <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
-                              {m.name}
-                            </span>
-                            <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
-                            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
-                              <span
-                                className="block h-full rounded-full bg-brand transition-[width] duration-500"
-                                style={{ width: `${Math.max(cov * 100, 2)}%` }}
-                              />
-                            </span>
-                            <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
-                              {Math.round(cov * 100)}%
-                            </span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                    {speed.members.some((m) => !m.invested) && (
-                      <p className="mt-1.5 text-[10px] text-warn">
-                        {speed.members.filter((m) => !m.invested).length} de {speed.teamSize} piezas sin SP de
-                        velocidad: se puntúan tal cual, sin inversión.
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="label mb-1.5 text-muted">Por amenaza · cuántas de tus {speed.teamSize} la superan</p>
-                    <div className="flex flex-wrap gap-1">
-                      {race.map((t) => {
-                        const b = t.beats[activeField]
-                        const tone =
-                          b === 0
-                            ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
-                            : b === speed.teamSize
-                              ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
-                              : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => onOpenThreat(t.id)}
-                            title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
-                            className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
-                          >
-                            {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
-                          </button>
-                        )
-                      })}
+              <>
+                {slowMember && fastMember && (
+                  <p className="text-xs text-muted">
+                    Rango del equipo: <span className="text-fg">{slowMember.name}</span>{" "}
+                    <span className="num text-faint">{slowMember.speed}</span>
+                    {" – "}
+                    <span className="text-fg">{fastMember.name}</span>{" "}
+                    <span className="num text-faint">{fastMember.speed}</span>
+                  </p>
+                )}
+                <details className="group">
+                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
+                    <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                    Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
+                  </summary>
+                  <div className="mt-2.5 space-y-3">
+                    <div>
+                      <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
+                      <ul className="space-y-1">
+                        {speed.members.map((m) => {
+                          const cov = m.coverage[activeField]
+                          return (
+                            <li key={m.id} className="flex items-center gap-2">
+                              <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
+                                {m.name}
+                              </span>
+                              <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
+                              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
+                                <span
+                                  className="block h-full rounded-full bg-brand transition-[width] duration-500"
+                                  style={{ width: `${Math.max(cov * 100, 2)}%` }}
+                                />
+                              </span>
+                              <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
+                                {Math.round(cov * 100)}%
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      {speed.members.some((m) => !m.invested) && (
+                        <p
+                          className="mt-1.5 text-[10px] text-faint"
+                          title="Piezas con 0 Stat Points en velocidad: sin repartir ningún SP, o con SP solo en otras estadísticas. Las que llevan al menos 1 SP en velocidad no cuentan aquí. Se puntúan con lo que tienen puesto, sin asumir inversión (a la oposición sí se le infiere); los objetos (p. ej. Choice Scarf) siguen aplicándose."
+                        >
+                          <span className="text-warn">
+                            {speed.members.filter((m) => !m.invested).length} de {speed.teamSize}
+                          </span>{" "}
+                          piezas sin SP en velocidad · se puntúan sin inversión.
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="label mb-1.5 text-muted">Por amenaza · cuántas de tus {speed.teamSize} la superan</p>
+                      <div className="flex flex-wrap gap-1">
+                        {race.map((t) => {
+                          const b = t.beats[activeField]
+                          const tone =
+                            b === 0
+                              ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
+                              : b === speed.teamSize
+                                ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
+                                : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => onOpenThreat(t.id)}
+                              title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
+                              className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone}`}
+                            >
+                              {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </details>
+                </details>
+              </>
             ) : (
               <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
             )}

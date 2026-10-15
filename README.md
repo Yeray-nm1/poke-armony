@@ -52,9 +52,11 @@ la carrera**; la métrica es la media de esas fracciones ponderada por uso (SP,
 naturaleza y objeto reales del usuario; de la oposición se infieren los SP de su
 naturaleza más común y se aplica el **Choice Scarf**). No ancla en un extremo del
 equipo —ni el más rápido ni el más lento—, así que un muro lento solo resta 1/N por
-amenaza y un soporte rápido no infla; un desglose desplegable muestra, por pieza, el
-% del meta que adelanta cada miembro (y por amenaza, cuántas de las tuyas la superan).
-El **control de velocidad**
+amenaza y un soporte rápido no infla. En el panel, la velocidad **no lleva barra
+propia** en el cuadro de métricas: vive en su bloque «Carrera de velocidad», con la
+banda del equipo (más lento – más rápido) y un **desglose desplegable** que muestra,
+por pieza, el % del meta que adelanta cada miembro (y por amenaza, cuántas de las
+tuyas la superan). El **control de velocidad**
 (Tailwind / Trick Room) **no puntúa como rol**: la UI ofrece un **selector de campo**
 que alterna entre los tres escenarios **precalculados** —sin control / Tailwind ×2 /
 Trick Room invertido— y recompone el gauge al instante, sin recalcular.
