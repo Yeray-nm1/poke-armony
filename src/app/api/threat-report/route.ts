@@ -1,6 +1,7 @@
 // Informe de amenaza con daño REAL de Champions. Se calcula aquí (servidor)
 // porque `@smogon/calc` (gen 0 = Pokémon Champions) es pesado: no debe inflar el
 // bundle del cliente. El cliente envía su equipo actual y recibe el informe completo.
+import { speciesOf } from "@/core"
 import { detailedReport } from "@/core/damage"
 import { getBattle } from "@/lib/data"
 import { validateTeam, validateThreatId } from "@/lib/validate"
@@ -18,6 +19,11 @@ export async function POST(request: Request) {
   const threat = validateThreatId(threatId)
   if (!threat.ok) return Response.json({ error: threat.error }, { status: 400 })
   const ds = await getBattle()
+  // Un id que no resuelve a ninguna especie produciría un informe "fantasma"
+  // (name = el id, types: [], usage: 0): mejor un 404 explícito.
+  if (!speciesOf(ds.pokedex, threat.value)) {
+    return Response.json({ error: `amenaza desconocida: "${threat.value}"` }, { status: 404 })
+  }
   const report = detailedReport(team.value, threat.value, ds.pokedex, ds.moves, ds.meta)
   return Response.json(report)
 }
