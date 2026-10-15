@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { motion } from "motion/react"
 import { ChevronDown } from "lucide-react"
-import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, speedProfile, toId, weakestMetrics, type Analysis, type Field, type Proposal, type Team } from "@/core"
+import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, speedProfile, toId, weakestMetrics, type Analysis, type Field, type MissingField, type Proposal, type Team } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
 import { Button, Gauge, Hint, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
@@ -18,6 +18,13 @@ const FIELD_HINT: Record<Field, string> = {
   none: "Carrera base, sin control de velocidad. Si el setter cae, esto es lo que tienes.",
   tailwind: "Con Tailwind activo: tu velocidad se duplica.",
   trickroom: "Con Trick Room activo: el eje se invierte y gana el más lento.",
+}
+
+/** Nombre legible de lo que le falta a un set, para el aviso de sets a medias. */
+const MISSING_LABEL: Record<MissingField, string> = {
+  sp: "SP sin repartir",
+  item: "sin objeto",
+  nature: "sin naturaleza",
 }
 
 export function DiagnosisPanel({
@@ -104,6 +111,17 @@ export function DiagnosisPanel({
   // Extremos del equipo para la línea de resumen (banda, sin mediana).
   const slowMember = speed.members.length ? speed.members[speed.members.length - 1] : null
   const fastMember = speed.members.length ? speed.members[0] : null
+
+  // Sets a medias (SP sin repartir del todo, objeto o naturaleza sin elegir) y su
+  // detalle para el tooltip, agrupado por lo que falta.
+  const incomplete = speed.members.filter((m) => m.missing.length > 0)
+  const incompleteHint = (["sp", "item", "nature"] as MissingField[])
+    .map((k) => {
+      const names = incomplete.filter((m) => m.missing.includes(k)).map((m) => m.name)
+      return names.length ? `${MISSING_LABEL[k]}: ${names.join(", ")}` : null
+    })
+    .filter(Boolean)
+    .join(" · ")
 
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
@@ -215,7 +233,7 @@ export function DiagnosisPanel({
           <div className="space-y-1.5 border-t border-line/70 pt-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-1.5">
-                <span className="label text-muted">Carrera de velocidad</span>
+                <span className="label text-muted">Velocidad</span>
                 <Hint text={METRIC_HINT.speed} />
               </span>
               {available.length > 1 ? (
@@ -288,15 +306,15 @@ export function DiagnosisPanel({
                           )
                         })}
                       </ul>
-                      {speed.members.some((m) => !m.invested) && (
+                      {incomplete.length > 0 && (
                         <p
                           className="mt-1.5 text-[10px] text-faint"
-                          title="Piezas con 0 Stat Points en velocidad: sin repartir ningún SP, o con SP solo en otras estadísticas. Las que llevan al menos 1 SP en velocidad no cuentan aquí. Se puntúan con lo que tienen puesto, sin asumir inversión (a la oposición sí se le infiere); los objetos (p. ej. Choice Scarf) siguen aplicándose."
+                          title={`Sets a medias — ${incompleteHint}. Se puntúan con lo que tengan puesto, sin asumir inversión (a la oposición sí se le infiere).`}
                         >
                           <span className="text-warn">
-                            {speed.members.filter((m) => !m.invested).length} de {speed.teamSize}
+                            Falta completar el set en {incomplete.length} de {speed.teamSize} Pokémon
                           </span>{" "}
-                          piezas sin SP en velocidad · se puntúan sin inversión.
+                          · su velocidad puede ser baja por eso.
                         </p>
                       )}
                     </div>

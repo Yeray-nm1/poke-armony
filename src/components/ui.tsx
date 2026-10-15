@@ -243,7 +243,7 @@ export const METRIC_HINT: Record<string, string> = {
   offense: "Daño súper efectivo que el equipo puede hacer a las amenazas del meta",
   threatClosure: "Amenazas del meta a las que el equipo puede responder: resistir sus ataques y golpearlas súper efectivo",
   roles: "Roles clave cubiertos: redirección, Protect, Fake Out, seteo, etc.",
-  speed: "Por cada amenaza del meta, cuántos de tus miembros le ganan la carrera (media ponderada por uso, con naturaleza/objeto). El selector de campo cambia el escenario: sin control, Tailwind ×2 o Trick Room invertido.",
+  speed: "Por cada amenaza del top, cuántos de tus miembros le ganan la carrera; la nota es la media de esas fracciones ponderada por uso (con las naturaleza, objeto y SP reales de cada pieza). El selector de campo cambia el escenario: sin control, Tailwind ×2 o Trick Room invertido.",
   synergy: "Sinergias entre miembros: clima/terreno + movimiento, Fake Out + seteo, redirección + seteo",
   redundancy: "Solapamiento de roles y tipos entre miembros — cuanto menos, mejor",
 }

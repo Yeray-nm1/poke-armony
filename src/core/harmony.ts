@@ -5,7 +5,7 @@
 // pokedex de Showdown usa ids sin guion ("arcaninehisui"). Normalizamos SIEMPRE
 // las búsquedas de especie con `toId` para no perder formas regionales.
 import { TYPES, effVs } from "./typechart"
-import { natureEffect, SP_MAX, statAt50 } from "./stats"
+import { natureEffect, SP_MAX, SP_TOTAL, spUsed, statAt50 } from "./stats"
 import type { Meta, MoveData, MoveDex, Pokedex, SetStats, SpeciesData, Team, TeamSet } from "./types"
 
 export type { Meta, SetStats } from "./types"
@@ -142,6 +142,9 @@ export function roleCoverage(team: Team) {
 /** Escenario de campo que altera la carrera de velocidad. */
 export type Field = "none" | "tailwind" | "trickroom"
 
+/** Campo del set que falta por configurar en una pieza. */
+export type MissingField = "sp" | "item" | "nature"
+
 const SCARF_MULT = 1.5
 const isScarf = (item?: string) => !!item && toId(item) === "choicescarf"
 
@@ -232,7 +235,9 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
     : { none: 0, tailwind: 0, trickroom: 0 }
 
   // Cobertura por pieza (para el desglose desplegable): % del meta que adelanta
-  // cada miembro, ponderado por uso. `invested` marca si lleva SP de velocidad.
+  // cada miembro, ponderado por uso. `missing` lista lo que le falta al set (SP
+  // sin repartir del todo, objeto o naturaleza), porque una velocidad baja puede
+  // ser solo un set a medias.
   const coverageOf = (mSpeed: number, field: Field) =>
     threats.reduce((acc, t) => {
       const wins = field === "trickroom" ? mSpeed < t.speed : (field === "tailwind" ? mSpeed * 2 : mSpeed) > t.speed
@@ -240,12 +245,18 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
     }, 0) / total
 
   const members = team
-    .map((s, i) => ({
-      id: s.id,
-      name: speciesOf(dex, s.id)?.name ?? s.name ?? s.id,
-      speed: teamSpeeds[i],
-      invested: (s.sp?.spe ?? 0) > 0,
-    }))
+    .map((s, i) => {
+      const missing: MissingField[] = []
+      if (spUsed(s) < SP_TOTAL) missing.push("sp")
+      if (!s.item) missing.push("item")
+      if (!s.nature) missing.push("nature")
+      return {
+        id: s.id,
+        name: speciesOf(dex, s.id)?.name ?? s.name ?? s.id,
+        speed: teamSpeeds[i],
+        missing,
+      }
+    })
     .filter((m) => m.speed > 0)
     .sort((a, b) => b.speed - a.speed)
     .map((m) => ({

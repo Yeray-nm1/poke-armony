@@ -208,8 +208,20 @@ describe("perfil de velocidad con SP reales", () => {
     expect(s.members.map((m) => m.id)).toEqual(["me", "slowmon"])
     expect(s.members[0].coverage.none).toBeCloseTo(100 / 200, 5) // 120: adelanta a 90 y 109
     expect(s.members[1].coverage.none).toBeCloseTo(50 / 200, 5) // 100: solo a 90
-    // Sin `sp` en el set ⇒ marcada como no invertida.
-    expect(s.members.every((m) => !m.invested)).toBe(true)
+    // Sets a medias: los fixtures no traen `sp`, objeto ni naturaleza.
+    expect(s.members.every((m) => m.missing.join() === "sp,item,nature")).toBe(true)
+  })
+
+  it("no marca set a medias cuando SP, objeto y naturaleza están puestos", () => {
+    // Reparto completo (66 SP) en stats que no son velocidad: el set está cerrado,
+    // así que su velocidad baja es una decisión, no un set sin terminar.
+    const full = mon("me", ["Protect"], {
+      item: "Leftovers",
+      nature: "Calm",
+      sp: { hp: 32, def: 2, spd: 32 },
+    })
+    const s = speedProfile([full], fastDex, fastMeta)
+    expect(s.members[0].missing).toEqual([])
   })
 
   it("infiere los SP de la oposición de su naturaleza y aplica Choice Scarf", () => {
