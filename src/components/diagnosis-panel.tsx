@@ -27,9 +27,24 @@ const MISSING_LABEL: Record<MissingField, string> = {
   nature: "sin naturaleza",
 }
 
-/** ¿Le gana mi velocidad a la amenaza en este escenario? (espejo del core). */
-const winsRace = (mine: number, opp: number, field: Field) =>
-  field === "trickroom" ? mine < opp : (field === "tailwind" ? mine * 2 : mine) > opp
+/** Velocidad que entra en la comparación con el escenario activo (Tailwind ×2). */
+const effectiveSpeed = (mine: number, field: Field) => (field === "tailwind" ? mine * 2 : mine)
+
+/**
+ * Margen de velocidad A TU FAVOR en el escenario activo: positivo ⇒ actúas antes.
+ * - Sin control / Tailwind: tu velocidad (×2 con TW) menos la de la amenaza.
+ * - Trick Room: se invierte el eje, así que el margen es amenaza − tú (el lento va antes).
+ * Así el signo siempre concuerda con el veredicto «actúa antes / después».
+ */
+const speedMargin = (mine: number, opp: number, field: Field) =>
+  field === "trickroom" ? opp - mine : effectiveSpeed(mine, field) - opp
+
+/** Nota corta del escenario activo para la comparativa. */
+const SCENARIO_NOTE: Record<Field, string> = {
+  none: "Sin control de velocidad.",
+  tailwind: "Con Tailwind tu velocidad se duplica.",
+  trickroom: "Con Trick Room actúa antes el más lento.",
+}
 
 export function DiagnosisPanel({
   dataset,
@@ -361,19 +376,30 @@ export function DiagnosisPanel({
                             <span className="num text-faint">{selectedThreat.speed}</span>
                             <span className="text-faint">· uso {selectedThreat.pct}%</span>
                           </p>
-                          <ul className="mt-1.5 space-y-0.5">
+                          <p className="mt-0.5 text-[10px] text-faint">{SCENARIO_NOTE[activeField]}</p>
+                          <div className="mt-1.5 flex items-center gap-2 text-[9px] uppercase tracking-wide text-faint/70">
+                            <span className="w-20 shrink-0">Pieza</span>
+                            <span className="w-8 shrink-0 text-right">Vel.</span>
+                            <span className="w-12 shrink-0 text-right">Ventaja</span>
+                            <span className="flex-1" />
+                          </div>
+                          <ul className="space-y-0.5">
                             {speed.members.map((m) => {
-                              const before = winsRace(m.speed, selectedThreat.speed, activeField)
-                              const delta = m.speed - selectedThreat.speed
+                              const margin = speedMargin(m.speed, selectedThreat.speed, activeField)
+                              const ahead = margin > 0
                               return (
                                 <li key={m.id} className="flex items-center gap-2 text-[11px]">
-                                  <span className="w-24 shrink-0 truncate text-fg">{m.name}</span>
-                                  <span className="num w-7 shrink-0 text-right text-faint">{m.speed}</span>
-                                  <span className="num w-9 shrink-0 text-right text-faint">
-                                    {delta > 0 ? `+${delta}` : delta}
+                                  <span className="w-20 shrink-0 truncate text-fg" title={m.name}>
+                                    {m.name}
                                   </span>
-                                  <span className={before ? "text-brand" : "text-bad"}>
-                                    {before ? "actúa antes" : "actúa después"}
+                                  <span className="num w-8 shrink-0 text-right text-muted">
+                                    {effectiveSpeed(m.speed, activeField)}
+                                  </span>
+                                  <span className={`num w-12 shrink-0 text-right ${ahead ? "text-brand" : "text-bad"}`}>
+                                    {margin > 0 ? `+${margin}` : margin}
+                                  </span>
+                                  <span className={`flex-1 ${ahead ? "text-brand" : "text-bad"}`}>
+                                    {ahead ? "actúa antes" : "actúa después"}
                                   </span>
                                 </li>
                               )

@@ -56,7 +56,11 @@ amenaza y un soporte rápido no infla. En el panel, la velocidad **no lleva barr
 propia** en el cuadro de métricas: vive en su bloque «Velocidad», con la
 banda del equipo (más lento – más rápido) y un **desglose desplegable** que muestra,
 por pieza, el % del meta que adelanta cada miembro (y por amenaza, cuántas de las
-tuyas la superan). El **control de velocidad**
+tuyas la superan). Los chips de amenaza **seleccionan** una amenaza y despliegan la
+**comparativa de velocidad** con tus seis piezas: su velocidad efectiva en el
+escenario activo (×2 con Tailwind), la **ventaja** (positiva ⇒ actúas antes, con el
+signo ya orientado en Trick Room) y el veredicto. Los chips de amenaza del resto del
+panel siguen abriendo la ficha de moveset y KO. El **control de velocidad**
 (Tailwind / Trick Room) **no puntúa como rol**: la UI ofrece un **selector de campo**
 que alterna entre los tres escenarios **precalculados** —sin control / Tailwind ×2 /
 Trick Room invertido— y recompone el gauge al instante, sin recalcular.
