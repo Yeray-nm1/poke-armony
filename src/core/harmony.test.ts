@@ -204,6 +204,13 @@ describe("perfil de velocidad con SP reales", () => {
     expect(s.scenarios.tailwind).toBeCloseTo(1, 5)
     // Trick Room (invertido): (0 + 0,5 + 1 + 1) × 50 / 200.
     expect(s.scenarios.trickroom).toBeCloseTo(125 / 200, 5)
+
+    // Desglose por pieza (el plegable de la UI), de más rápida a más lenta.
+    expect(s.members.map((m) => m.id)).toEqual(["me", "slowmon"])
+    expect(s.members[0].coverage.none).toBeCloseTo(100 / 200, 5) // 120: adelanta a 90 y 109
+    expect(s.members[1].coverage.none).toBeCloseTo(50 / 200, 5) // 100: solo a 90
+    // Sin `sp` en el set ⇒ marcada como no invertida.
+    expect(s.members.every((m) => !m.invested)).toBe(true)
   })
 
   it("infiere los SP de la oposición de su naturaleza y aplica Choice Scarf", () => {

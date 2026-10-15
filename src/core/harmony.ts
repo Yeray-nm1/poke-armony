@@ -244,12 +244,38 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
       }
     : { none: 0, tailwind: 0, trickroom: 0 }
 
+  // Cobertura por pieza (para el desglose desplegable): % del meta que adelanta
+  // cada miembro, ponderado por uso. `invested` marca si lleva SP de velocidad.
+  const coverageOf = (mSpeed: number, field: Field) =>
+    threats.reduce((acc, t) => {
+      const wins = field === "trickroom" ? mSpeed < t.speed : (field === "tailwind" ? mSpeed * 2 : mSpeed) > t.speed
+      return acc + (wins ? t.pct : 0)
+    }, 0) / total
+
+  const members = team
+    .map((s, i) => ({
+      id: s.id,
+      name: speciesOf(dex, s.id)?.name ?? s.name ?? s.id,
+      speed: teamSpeeds[i],
+      invested: (s.sp?.spe ?? 0) > 0,
+    }))
+    .filter((m) => m.speed > 0)
+    .sort((a, b) => b.speed - a.speed)
+    .map((m) => ({
+      ...m,
+      coverage: {
+        none: coverageOf(m.speed, "none"),
+        tailwind: coverageOf(m.speed, "tailwind"),
+        trickroom: coverageOf(m.speed, "trickroom"),
+      } as Record<Field, number>,
+    }))
+
   const hasTailwind = team.some((s) => (s.attacks ?? []).includes("Tailwind"))
   const hasTrickRoom = team.some((s) => (s.attacks ?? []).includes("Trick Room"))
 
   return {
     scenarios, fastest, slowest, median, teamSize: n, slowestId, fastestId,
-    teamSpeeds, hasTailwind, hasTrickRoom, threats,
+    teamSpeeds, hasTailwind, hasTrickRoom, threats, members,
   }
 }
 
