@@ -207,6 +207,7 @@ function buildChampions(pokedex: Pokedex, moves: MoveDex): LegalData & { items: 
         category: mv.category ?? "Status",
         basePower: mv.basePower,
         accuracy: (mv as { accuracy?: number | true }).accuracy,
+        target: (mv as { target?: string }).target,
       }
       addedMoves++
     }

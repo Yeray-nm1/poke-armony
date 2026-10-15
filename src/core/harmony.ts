@@ -107,34 +107,298 @@ export function threatClosure(team: Team, dex: Pokedex, moves: MoveDex, meta: Me
   return { score: total ? answered / total : 0, unanswered, top: top.map((u) => u.id) }
 }
 
-// ── 4. Cobertura de roles ────────────────────────────────────────────
-// El control de velocidad (Tailwind/Icy Wind/Trick Room…) NO puntúa aquí: lo
-// representa el escenario de campo en la métrica de Velocidad. Aquí solo se
-// reporta como información (`speedControl`) para no contarlo dos veces.
-const ROLES: Record<string, string[]> = {
-  redirection: ["Follow Me", "Rage Powder"],
-  protect: ["Protect", "Detect"],
-  "fake-out": ["Fake Out"],
-  "win-condition": ["Nasty Plot", "Swords Dance", "Calm Mind", "Dragon Dance", "Bulk Up", "Victory Dance"],
-  "hazard-control": ["Rapid Spin", "Defog", "Mortal Spin", "Court Change"],
-}
-const SPEED_CONTROL = ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room", "Electroweb", "Bulldoze"]
-const ALL_ROLES = [...Object.keys(ROLES), "intimidate"]
+// ── 4. Roles: el foco del equipo ─────────────────────────────────────
+//
+// Un **rol** es la función de una pieza (clima, apoyo, seteo…), no el
+// movimiento concreto que la hace. Y —a diferencia de la lista anterior— la
+// métrica **no exige una colección de roles**: que falte uno no resta, porque
+// puede no seguir la dirección del equipo (un equipo rápido no pierde puntos
+// por no llevar Trick Room, ni uno lento por no llevar Tailwind).
+//
+// Lo que mide es si el **foco que declara el propio equipo** está sostenido.
+// Detectamos sus planes —Trick Room, ritmo rápido, clima, terreno, seteo, y
+// `balance` cuando no declara ninguno— y por cada uno comprobamos que tenga
+// beneficiarios, que no lo contradigan y que alguien lo ayude a montarlo. Nada
+// que el equipo no declara le resta puntos; un equipo nuevo que encaje en un
+// molde conocido cae en `balance` y solo se le pide coherencia.
+//
+// El control de velocidad sigue fuera de la nota (la carrera se mide en la
+// métrica de Velocidad): aquí solo se etiqueta, para no contarlo dos veces.
 
-export function roleCoverage(team: Team) {
-  const present = new Set<string>()
-  let speedControl = false
-  for (const s of team) {
-    const mv = new Set(s.attacks ?? [])
-    for (const [role, list] of Object.entries(ROLES)) if (list.some((m) => mv.has(m))) present.add(role)
-    if (s.ability === "Intimidate") present.add("intimidate")
-    if (SPEED_CONTROL.some((m) => mv.has(m))) speedControl = true
+/** Función que cumple una pieza dentro del equipo. */
+export type PieceRole =
+  | "weather" | "terrain" | "screens" | "speedControl" | "redirect"
+  | "guards" | "fakeOut" | "offenseSupport" | "spread" | "statDrop"
+  | "heal" | "pivot" | "setup"
+
+export const PIECE_ROLE_LABEL: Record<PieceRole, string> = {
+  weather: "clima",
+  terrain: "terreno",
+  screens: "pantallas",
+  speedControl: "control de velocidad",
+  redirect: "redirección",
+  guards: "guardias",
+  fakeOut: "presión inicial",
+  offenseSupport: "apoyo ofensivo",
+  spread: "multi-objetivo",
+  statDrop: "baja stats",
+  heal: "curación",
+  pivot: "pivote",
+  setup: "seteo",
+}
+
+/** Plan que declara un equipo. `balance` es el de quien no declara ninguno. */
+export type PlanId = "trickroom" | "tailwind" | "weather" | "terrain" | "setup" | "balance"
+
+/** Una expectativa del plan y si se cumple. */
+export interface PlanCheck {
+  label: string
+  ok: boolean
+}
+
+export interface RolePlan {
+  id: PlanId
+  label: string
+  checks: PlanCheck[]
+}
+
+export interface RoleReport {
+  /** 0..1: proporción de comprobaciones cumplidas por los planes declarados. */
+  score: number
+  plans: RolePlan[]
+  /** Funciones detectadas en cada pieza (para el detalle de la UI). */
+  pieces: { id: string; name: string; roles: PieceRole[] }[]
+  /** Hay control de velocidad en el equipo (informativo: puntúa en Velocidad). */
+  speedControl: boolean
+}
+
+const SETUP_MOVES = [
+  "Nasty Plot", "Swords Dance", "Calm Mind", "Dragon Dance", "Bulk Up", "Victory Dance",
+  "Belly Drum", "Quiver Dance", "Shell Smash", "Tail Glow", "Take Heart", "Iron Defense",
+]
+const REDIRECT_MOVES = ["Follow Me", "Rage Powder"]
+const REDIRECT_ABILITIES = ["Storm Drain", "Lightning Rod"]
+const SCREEN_MOVES = ["Reflect", "Light Screen", "Aurora Veil"]
+const GUARD_MOVES = ["Wide Guard", "Quick Guard", "Crafty Shield"]
+const OFFENSE_SUPPORT_MOVES = ["Helping Hand", "Coaching", "Decorate", "Howl", "Instruct", "After You"]
+const STAT_DROP_MOVES = [
+  "Icy Wind", "Snarl", "Will-O-Wisp", "Parting Shot", "Charm", "Fake Tears",
+  "Screech", "Metal Sound", "Baby-Doll Eyes", "Tearful Look", "Feather Dance", "Scary Face",
+]
+const HEAL_MOVES = [
+  "Recover", "Roost", "Slack Off", "Soft-Boiled", "Synthesis", "Shore Up", "Milk Drink",
+  "Strength Sap", "Life Dew", "Heal Pulse", "Wish", "Jungle Healing", "Lunar Blessing",
+  "Morning Sun", "Moonlight", "Rest", "Pollen Puff",
+]
+const PIVOT_MOVES = ["U-turn", "Volt Switch", "Flip Turn", "Parting Shot", "Teleport", "Baton Pass", "Shed Tail"]
+/** Prioridad sin Fake Out (que ya es su propio rol): sirve para cerrar KO. */
+const PRIORITY_MOVES = [
+  "Sucker Punch", "Extreme Speed", "Grassy Glide", "Aqua Jet", "Bullet Punch", "Ice Shard",
+  "Shadow Sneak", "Mach Punch", "Vacuum Wave", "Accelerock", "First Impression",
+  "Water Shuriken", "Jet Punch", "Upper Hand", "Quick Attack",
+]
+/** Piezas que aguantan siendo objetivo: objeto de aguante o stats defensivas. */
+const SURVIVAL_ITEMS = [
+  "Focus Sash", "Leftovers", "Sitrus Berry", "Lum Berry", "Chesto Berry", "Wiki Berry",
+  "Mago Berry", "Iapapa Berry", "Aguav Berry", "Liechi Berry", "Petaya Berry", "Salac Berry",
+  "Custap Berry", "Rawst Berry", "Aspear Berry", "Rocky Helmet",
+]
+/** Aguante mínimo (def + spd base) para cargar un seteo. */
+const SETUP_BULK = 170
+
+/** Cuatro climas, con lo que cada uno declara y lo que de él se aprovecha. */
+interface FieldKind {
+  key: string
+  label: string
+  setAbilities: string[]
+  setMoves: string[]
+  abuserAbilities?: string[]
+  abuserMoves?: string[]
+  abuserItems?: string[]
+}
+
+const WEATHERS: FieldKind[] = [
+  { key: "sun", label: "sol", setAbilities: ["Drought"], setMoves: ["Sunny Day"],
+    abuserAbilities: ["Chlorophyll", "Solar Power", "Leaf Guard", "Flower Gift", "Harvest"],
+    abuserMoves: ["Solar Beam", "Solar Blade"] },
+  { key: "rain", label: "lluvia", setAbilities: ["Drizzle"], setMoves: ["Rain Dance"],
+    abuserAbilities: ["Swift Swim", "Hydration", "Rain Dish", "Dry Skin"],
+    abuserMoves: ["Hurricane", "Thunder"] },
+  { key: "sand", label: "arena", setAbilities: ["Sand Stream"], setMoves: ["Sandstorm"],
+    abuserAbilities: ["Sand Rush", "Sand Force", "Sand Veil"] },
+  { key: "snow", label: "nieve", setAbilities: ["Snow Warning"], setMoves: ["Snowscape"],
+    abuserAbilities: ["Slush Rush", "Ice Body"], abuserMoves: ["Blizzard"] },
+]
+
+const TERRAINS: FieldKind[] = [
+  { key: "grassy", label: "hierba", setAbilities: ["Grassy Surge"], setMoves: ["Grassy Terrain"],
+    abuserAbilities: ["Grassy Pelt"], abuserMoves: ["Grassy Glide"], abuserItems: ["Grassy Seeds"] },
+  { key: "electric", label: "eléctrico", setAbilities: ["Electric Surge"], setMoves: ["Electric Terrain"],
+    abuserAbilities: ["Surge Surfer"], abuserMoves: ["Rising Voltage"], abuserItems: ["Electric Seeds"] },
+  { key: "psychic", label: "psíquico", setAbilities: ["Psychic Surge"], setMoves: ["Psychic Terrain"],
+    abuserMoves: ["Expanding Force"], abuserItems: ["Psychic Seeds"] },
+  { key: "misty", label: "niebla", setAbilities: ["Misty Surge"], setMoves: ["Misty Terrain"],
+    abuserMoves: ["Misty Explosion"], abuserItems: ["Misty Seeds"] },
+]
+const FIELD_ABUSER_MOVES = ["Terrain Pulse"]
+/** Control de velocidad: NO puntúa en Roles (la carrera es de Velocidad), solo etiqueta. */
+const SPEED_CONTROL = ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room", "Electroweb", "Bulldoze"]
+
+/** Roles que suman como apoyo genérico (para `balance`). */
+const SUPPORT_ROLES: PieceRole[] = ["redirect", "guards", "screens", "fakeOut", "statDrop", "heal", "offenseSupport"]
+/** Roles que habilitan un turno (montar TR/Tailwind o cargar un seteo). */
+const ENABLE_ROLES: PieceRole[] = ["redirect", "guards", "screens", "fakeOut"]
+const SETUP_SUPPORT_ROLES: PieceRole[] = [...ENABLE_ROLES, "statDrop"]
+
+/** Funciones de una pieza, deducidas de sus movimientos, habilidad y objeto. */
+export function pieceRoles(set: TeamSet, moveDex: MoveDex): PieceRole[] {
+  const atk = new Set(set.attacks ?? [])
+  const has = (list: string[]) => list.some((m) => atk.has(m))
+  const isSpread = (name: string) => {
+    const m = moveDex[toId(name)]
+    return !!m && m.category !== "Status" && m.basePower > 0 &&
+      (m.target === "allAdjacentFoes" || m.target === "allAdjacent" || m.target === "all")
   }
+  const setsField = (k: FieldKind) => k.setAbilities.includes(set.ability ?? "") || has(k.setMoves)
+  const roles = new Set<PieceRole>()
+  if (WEATHERS.some(setsField)) roles.add("weather")
+  if (TERRAINS.some(setsField)) roles.add("terrain")
+  if (has(SCREEN_MOVES)) roles.add("screens")
+  if (has(SPEED_CONTROL)) roles.add("speedControl")
+  if (has(REDIRECT_MOVES) || REDIRECT_ABILITIES.includes(set.ability ?? "")) roles.add("redirect")
+  if (has(GUARD_MOVES)) roles.add("guards")
+  if (atk.has("Fake Out")) roles.add("fakeOut")
+  if (has(OFFENSE_SUPPORT_MOVES)) roles.add("offenseSupport")
+  if ([...atk].some(isSpread)) roles.add("spread")
+  if (has(STAT_DROP_MOVES) || set.ability === "Intimidate") roles.add("statDrop")
+  if (has(HEAL_MOVES) || set.ability === "Regenerator") roles.add("heal")
+  if (has(PIVOT_MOVES)) roles.add("pivot")
+  if (has(SETUP_MOVES)) roles.add("setup")
+  return [...roles]
+}
+
+/**
+ * Foco del equipo: detecta el plan que declara y comprueba que lo sostiene.
+ * La nota es la media de comprobaciones cumplidas de los planes declarados;
+ * `balance` entra solo si no hay ningún otro (nunca se exige un plan que el
+ * equipo no ha elegido).
+ */
+export function roleFocus(team: Team, dex: Pokedex, moveDex: MoveDex, meta: Meta): RoleReport {
+  const rolesByPiece = team.map((s) => pieceRoles(s, moveDex))
+  const attacks = team.map((s) => new Set(s.attacks ?? []))
+  const speeds = team.map((s) => realSpeed(s, dex))
+  const opp = threatSpeeds(dex, meta)
+  const pctTotal = opp.reduce((a, o) => a + o.pct, 0) || 1
+
+  /** % de amenazas que adelanta un miembro bajo un escenario dado. */
+  const cover = (mine: number, under: "none" | "tailwind" | "trickroom") =>
+    opp.reduce((a, o) => {
+      const wins = under === "trickroom" ? mine < o.speed : (under === "tailwind" ? mine * 2 : mine) > o.speed
+      return a + (wins ? o.pct : 0)
+    }, 0) / pctTotal
+
+  const count = (pred: (i: number) => boolean) =>
+    team.reduce((n, _, i) => n + (pred(i) ? 1 : 0), 0)
+  const hasRole = (i: number, roles: PieceRole[]) => roles.some((r) => rolesByPiece[i].includes(r))
+  const withRoles = (roles: PieceRole[]) => count((i) => hasRole(i, roles))
+  const declaresField = (k: FieldKind) => (i: number) =>
+    k.setAbilities.includes(team[i].ability ?? "") || [...attacks[i]].some((m) => k.setMoves.includes(m))
+  const plan = (id: PlanId, label: string, checks: PlanCheck[]): RolePlan => ({ id, label, checks })
+
+  const plans: RolePlan[] = []
+  /** Añade solo los planes que el equipo sí declara. */
+  const declarePlans = (ps: (RolePlan | null)[]) => {
+    for (const p of ps) if (p) plans.push(p)
+  }
+
+  // Planes de velocidad de campo: piden beneficiarios y que alguien los monte.
+  const speedPlan = (id: "trickroom" | "tailwind"): RolePlan | null => {
+    const move = id === "trickroom" ? "Trick Room" : "Tailwind"
+    if (!attacks.some((a) => a.has(move))) return null
+    const fast = count((i) => cover(speeds[i], "none") >= 0.6)
+    const enables = withRoles(ENABLE_ROLES)
+    if (id === "trickroom") {
+      // Bajo TR actúa antes quien es más lento que la amenaza: los lentos ganan.
+      const beneficiaries = count((i) => cover(speeds[i], "trickroom") >= 0.6)
+      return plan(id, "Trick Room", [
+        { label: "Al menos 2 piezas lentas que aprovechen el TR", ok: beneficiaries >= 2 },
+        { label: "Sin piezas rápidas que se queden atrás", ok: fast <= 1 },
+        { label: "Alguien que ayude a montarlo", ok: enables >= 1 },
+      ])
+    }
+    // Los beneficiarios se miden CON el alivio: un equipo de ritmo rápido es
+    // exactamente el que no llega por sí solo y por eso lo monta.
+    const beneficiaries = count((i) => cover(speeds[i], "tailwind") >= 0.6)
+    const stranded = count((i) => cover(speeds[i], "tailwind") <= 0.5)
+    return plan(id, "Ritmo rápido (Tailwind)", [
+      { label: "Al menos 2 piezas que alcancen la meta con el alivio", ok: beneficiaries >= 2 },
+      { label: "Sin piezas que ni con Tailwind lleguen", ok: stranded <= 1 },
+      { label: "Alguien que ayude a conservarlo", ok: enables >= 1 },
+    ])
+  }
+  declarePlans([speedPlan("trickroom"), speedPlan("tailwind")])
+
+  // Campo (clima/terreno): piden que alguien lo aproveche y no chocar con otro.
+  const fieldPlans = (kinds: FieldKind[], id: PlanId, noun: string): (RolePlan | null)[] =>
+    kinds.map((k) => {
+      const declares = declaresField(k)
+      if (!team.some((_, i) => declares(i))) return null
+      const abusers = count((i) =>
+        (k.abuserAbilities ?? []).includes(team[i].ability ?? "") ||
+        (k.abuserItems ?? []).includes(team[i].item ?? "") ||
+        [...attacks[i]].some((m) => (k.abuserMoves ?? []).includes(m) || FIELD_ABUSER_MOVES.includes(m)),
+      )
+      const conflicting = count((i) =>
+        kinds.some((o) => o.key !== k.key && declaresField(o)(i)),
+      )
+      return plan(id, `${noun}: ${k.label}`, [
+        { label: `Al menos una pieza que aproveche el ${noun.toLowerCase()}`, ok: abusers >= 1 },
+        { label: `Sin otro ${noun.toLowerCase()} que lo contradiga`, ok: conflicting === 0 },
+      ])
+    })
+  declarePlans([...fieldPlans(WEATHERS, "weather", "Clima"), ...fieldPlans(TERRAINS, "terrain", "Terreno")])
+
+  // Seteo: pide a alguien que lo habilite y que el seteador aguante.
+  const setups = count((i) => rolesByPiece[i].includes("setup"))
+  if (setups >= 2) {
+    const hardy = team.some((_, i) => {
+      if (!rolesByPiece[i].includes("setup")) return false
+      const sp = speciesOf(dex, team[i].id)
+      const bulk = sp ? sp.baseStats.def + sp.baseStats.spd >= SETUP_BULK : false
+      return bulk || (team[i].item ? SURVIVAL_ITEMS.includes(team[i].item) : false)
+    })
+    plans.push(plan("setup", "Seteo / win-condition", [
+      { label: "Alguien que habilite el seteo", ok: withRoles(SETUP_SUPPORT_ROLES) >= 1 },
+      { label: "Los seteadores no están a la intemperie", ok: hardy },
+    ]))
+  }
+
+  // Sin foco declarado: el equipo juega a buen equipo ("balance") y lo único
+  // que se le pide es que haya apoyo con qué trabajar y con qué cerrar.
+  if (!plans.length) {
+    const closers = count((i) =>
+      rolesByPiece[i].includes("setup") ||
+      [...attacks[i]].some((m) => PRIORITY_MOVES.includes(m)),
+    )
+    plans.push(plan("balance", "Equipo sin plan fijo", [
+      { label: "Al menos 2 piezas de apoyo", ok: withRoles(SUPPORT_ROLES) >= 2 },
+      { label: "Alguien que cierre las partidas", ok: closers >= 1 },
+    ]))
+  }
+
+  const kept = plans
+  const totalChecks = kept.reduce((a, p) => a + p.checks.length, 0)
+  const passed = kept.reduce((a, p) => a + p.checks.filter((c) => c.ok).length, 0)
+
   return {
-    score: present.size / ALL_ROLES.length,
-    present: [...present],
-    missing: ALL_ROLES.filter((r) => !present.has(r)),
-    speedControl,
+    score: totalChecks ? passed / totalChecks : 0,
+    plans: kept,
+    pieces: team.map((s, i) => ({
+      id: s.id,
+      name: speciesOf(dex, s.id)?.name ?? s.name ?? s.id,
+      roles: rolesByPiece[i],
+    })),
+    speedControl: attacks.some((a) => SPEED_CONTROL.some((m) => a.has(m))),
   }
 }
 
@@ -161,6 +425,34 @@ function inferSpeedSp(nature: string | undefined, base: number): number {
   return base >= 90 ? SP_MAX : 0
 }
 
+/** Velocidad real a L50 de una pieza: SP, naturaleza y Choice Scarf (×1.5). */
+function realSpeed(set: TeamSet, dex: Pokedex): number {
+  const sp = speciesOf(dex, set.id)
+  if (!sp) return 0
+  const real = statAt50(sp.baseStats.spe, set.sp?.spe ?? 0, "spe", set.nature)
+  return isScarf(set.item) ? Math.floor(real * SCARF_MULT) : real
+}
+
+/**
+ * Velocidad de las amenazas del top-20, con su peso de uso. Limitless no
+ * publica el reparto de SP, así que se infiere de la naturaleza más común
+ * (ver `inferSpeedSp`); el objeto más usado puede añadir el Scarf.
+ */
+function threatSpeeds(dex: Pokedex, meta: Meta): { id: string; name: string; pct: number; speed: number }[] {
+  return meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id)).map((u) => {
+    const sp = speciesOf(dex, u.id)!
+    const stats = meta.byId[u.id]
+    const nature = stats?.natures[0]?.name
+    const real = statAt50(sp.baseStats.spe, inferSpeedSp(nature, sp.baseStats.spe), "spe", nature)
+    return {
+      id: u.id,
+      name: u.name,
+      pct: u.pct,
+      speed: isScarf(stats?.items[0]?.name) ? Math.floor(real * SCARF_MULT) : real,
+    }
+  })
+}
+
 /**
  * Perfil de velocidad. Para **cada amenaza** del top cuenta **cuántos de tus
  * miembros le ganan la carrera**; la métrica es la media de esas fracciones
@@ -181,26 +473,14 @@ function inferSpeedSp(nature: string | undefined, base: number): number {
  */
 export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   // Velocidad real a L50 con SP, naturaleza y objeto (Choice Scarf ×1.5).
-  const teamSpeeds = team.map((s) => {
-    const sp = speciesOf(dex, s.id)
-    if (!sp) return 0
-    const real = statAt50(sp.baseStats.spe, s.sp?.spe ?? 0, "spe", s.nature)
-    return isScarf(s.item) ? Math.floor(real * SCARF_MULT) : real
-  })
+  const teamSpeeds = team.map((s) => realSpeed(s, dex))
   const valid = teamSpeeds.filter((v) => v > 0)
   const n = valid.length
   const fastest = n ? Math.max(...valid) : 0
   const slowest = n ? Math.min(...valid) : 0
 
-  const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
+  const top = threatSpeeds(dex, meta)
   const total = top.reduce((a, u) => a + u.pct, 0) || 1
-  const speeds = top.map((u) => {
-    const sp = speciesOf(dex, u.id)!
-    const stats = meta.byId[u.id]
-    const nature = stats?.natures[0]?.name
-    const real = statAt50(sp.baseStats.spe, inferSpeedSp(nature, sp.baseStats.spe), "spe", nature)
-    return isScarf(stats?.items[0]?.name) ? Math.floor(real * SCARF_MULT) : real
-  })
   // Por amenaza y escenario, cuántos de mis miembros la superan.
   const beatsFor = (field: Field, opp: number) =>
     valid.reduce((acc, v) => {
@@ -210,15 +490,15 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
     }, 0)
 
   // Desglose por amenaza (para la UI): velocidad real y N de mis N que la superan.
-  const threats = top.map((u, i) => ({
+  const threats = top.map((u) => ({
     id: u.id,
     name: u.name,
     pct: u.pct,
-    speed: speeds[i],
+    speed: u.speed,
     beats: {
-      none: beatsFor("none", speeds[i]),
-      tailwind: beatsFor("tailwind", speeds[i]),
-      trickroom: beatsFor("trickroom", speeds[i]),
+      none: beatsFor("none", u.speed),
+      tailwind: beatsFor("tailwind", u.speed),
+      trickroom: beatsFor("trickroom", u.speed),
     },
   }))
 
@@ -282,14 +562,14 @@ export function synergy(team: Team) {
   const abilities = new Set(team.map((s) => s.ability))
   const allMoves = new Set(team.flatMap((s) => s.attacks ?? []))
   const has = (list: string[]) => list.some((m) => allMoves.has(m))
-  const setup = has(ROLES["win-condition"])
+  const setup = has(SETUP_MOVES)
   let hits = 0
   if ((abilities.has("Grassy Surge") && allMoves.has("Grassy Glide")) ||
       (abilities.has("Electric Surge") && allMoves.has("Rising Voltage")) ||
       (abilities.has("Drizzle") && has(["Surf", "Muddy Water", "Hydro Pump", "Water Spout", "Wave Crash", "Liquidation", "Scald"])) ||
       (abilities.has("Drought") && has(["Heat Wave", "Flamethrower", "Fire Blast", "Flare Blitz", "Solar Beam"]))) hits++
   if (allMoves.has("Fake Out") && setup) hits++
-  if (has(ROLES.redirection) && setup) hits++
+  if (has(REDIRECT_MOVES) && setup) hits++
   return { score: hits / 3, hits }
 }
 
@@ -319,7 +599,8 @@ export interface Analysis {
   speedScenarios: Record<Field, number>
   weakest: string[]
   unanswered: string[]
-  missingRoles: string[]
+  /** Foco de roles: plan declarado, sus comprobaciones y las funciones de cada pieza. */
+  roleFocus: RoleReport
   offenseGaps: string[]
   nakedTypes: string[]
   /** Estado de los 18 tipos: defensiva (resistido / débil apilado) y ofensiva (golpeado SE). */
@@ -356,7 +637,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
   const d = defensiveBalance(team, dex)
   const o = offensiveCoverage(team, dex, moves, meta)
   const t = opts.closure ? opts.closure(team) : threatClosure(team, dex, moves, meta)
-  const r = roleCoverage(team)
+  const r = roleFocus(team, dex, moves, meta)
   const sp = speedProfile(team, dex, meta)
   const sy = synergy(team)
   const red = redundancy(team, dex)
@@ -377,7 +658,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
 
   return {
     harmony: +harmony.toFixed(1), metrics, speedScenarios: sp.scenarios, weakest,
-    unanswered: t.unanswered, missingRoles: r.missing,
+    unanswered: t.unanswered, roleFocus: r,
     offenseGaps: o.gaps, nakedTypes: d.breakdown.filter((b) => b.weak >= 2 && b.resist === 0).map((b) => b.type),
     typeCoverage,
   }

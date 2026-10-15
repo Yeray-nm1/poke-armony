@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { dex, meta, moves } from "./fixtures"
 import {
-  analyze, defensiveBalance, offensiveCoverage, redundancy, roleCoverage, speciesOf, speedProfile, synergy, threatClosure,
+  analyze, defensiveBalance, offensiveCoverage, pieceRoles, redundancy, roleFocus, speciesOf, speedProfile, synergy, threatClosure,
 } from "./harmony"
 import type { Meta, Pokedex, Team, TeamSet } from "./types"
 
@@ -76,17 +76,65 @@ describe("cierre de amenazas", () => {
 })
 
 describe("roles y sinergia", () => {
-  it("detecta Protect y la ausencia de redirección", () => {
-    const r = roleCoverage(balancedTeam)
-    expect(r.present).toContain("protect")
-    expect(r.missing).toContain("redirection")
+  it("deduce funciones por pieza (Protect no es rol: es ruido)", () => {
+    const incin = pieceRoles(mon("incineroar", ["Flare Blitz", "Fake Out"], { ability: "Intimidate" }), moves)
+    expect(incin).toEqual(expect.arrayContaining(["fakeOut", "statDrop"]))
+    expect(pieceRoles(mon("charizard", ["Flamethrower", "Protect"]), moves)).toEqual([])
   })
 
-  it("el control de velocidad no puntúa como rol, pero se reporta", () => {
-    const r = roleCoverage([mon("charizard", ["Tailwind", "Protect"])])
-    expect(r.missing).not.toContain("speed-control")
-    expect(r.speedControl).toBe(true)
-    expect(roleCoverage(balancedTeam).speedControl).toBe(false)
+  it("declara Tailwind como plan y cae a balance cuando no hay foco", () => {
+    const tw = roleFocus([mon("charizard", ["Tailwind", "Protect"])], dex, moves, meta)
+    expect(tw.plans.map((p) => p.id)).toContain("tailwind")
+    expect(roleFocus(balancedTeam, dex, moves, meta).plans.map((p) => p.id)).toEqual(["balance"])
+  })
+
+  it("el control de velocidad se reporta pero no puntúa", () => {
+    const ctrl = roleFocus([mon("charizard", ["Thunder Wave", "Protect"])], dex, moves, meta)
+    const plain = roleFocus([mon("charizard", ["Flamethrower", "Protect"])], dex, moves, meta)
+    expect(ctrl.speedControl).toBe(true)
+    expect(plain.speedControl).toBe(false)
+    // La nota solo sale de las comprobaciones del plan declarado: añadir
+    // control de velocidad no la mueve (eso lo puntúa Velocidad).
+    expect(ctrl.score).toBe(plain.score)
+  })
+
+  it("un equipo lento sostiene mejor el Trick Room que uno rápido", () => {
+    // Un equipo de TR real baja velocidad (naturaleza Quiet): así los lentos
+    // salen por delante de casi toda la amenaza. El rápido declara el plan sin
+    // poder sostenerlo, que es justo lo que la métrica debe distinguir.
+    const slow = roleFocus(
+      [
+        mon("incineroar", ["Trick Room", "Fake Out"], { nature: "Quiet" }),
+        mon("magnezone", ["Thunderbolt", "Protect"], { nature: "Quiet" }),
+        mon("blastoise", ["Surf", "Protect"], { nature: "Quiet" }),
+      ],
+      dex, moves, meta,
+    )
+    const fast = roleFocus(
+      [
+        mon("garchomp", ["Trick Room", "Protect"], { nature: "Jolly" }),
+        mon("infernape", ["Fake Out", "Close Combat"], { nature: "Jolly" }),
+        mon("charizard", ["Flamethrower", "Protect"], { nature: "Timid" }),
+      ],
+      dex, moves, meta,
+    )
+    expect(slow.plans.map((p) => p.id)).toContain("trickroom")
+    expect(fast.plans.map((p) => p.id)).toContain("trickroom")
+    expect(slow.score).toBeGreaterThan(fast.score)
+  })
+
+  it("el ritmo rápido se sostiene si las piezas alcanzan la meta con el alivio", () => {
+    // Equipo lento sin cubrir el meta por sí solo: con Tailwind todas llegan.
+    const tw = roleFocus(
+      [
+        mon("infernape", ["Tailwind", "Fake Out"]),
+        mon("blastoise", ["Surf", "Protect"]),
+        mon("venusaur", ["Grassy Glide", "Protect"]),
+      ],
+      dex, moves, meta,
+    )
+    expect(tw.plans.map((p) => p.id)).toEqual(["tailwind"])
+    expect(tw.score).toBe(1)
   })
 
   it("suma sinergia de terreno + abusador", () => {

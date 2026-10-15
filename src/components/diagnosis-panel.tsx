@@ -226,10 +226,36 @@ export function DiagnosisPanel({
                 ))}
               </div>
             )}
-            {analysis.missingRoles.length > 0 && (
+            {analysis.roleFocus.plans.map((plan) => {
+              const failed = plan.checks.filter((c) => !c.ok)
+              return (
+                <div
+                  key={plan.id}
+                  className="flex flex-wrap items-center gap-1.5 text-xs"
+                  title={plan.checks.map((c) => c.label).join(" · ")}
+                >
+                  <span className="text-faint">{plan.label}:</span>
+                  {failed.length === 0 ? (
+                    <span className="rounded-md border border-brand/35 bg-brand/12 px-1.5 py-0.5 text-brand">
+                      bien sostenido
+                    </span>
+                  ) : (
+                    failed.map((c) => (
+                      <span
+                        key={c.label}
+                        className="rounded-md border border-warn/35 bg-warn/12 px-1.5 py-0.5 text-warn"
+                      >
+                        {c.label}
+                      </span>
+                    ))
+                  )}
+                </div>
+              )
+            })}
+            {analysis.roleFocus.speedControl && (
               <p className="text-xs text-muted">
-                <span className="text-faint">Roles ausentes: </span>
-                {analysis.missingRoles.join(", ")}
+                <span className="text-faint">Control de velocidad: </span>
+                presente (lo puntúa Velocidad)
               </p>
             )}
           </div>

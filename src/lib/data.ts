@@ -147,6 +147,7 @@ export function slimDataset(ds: Dataset): Dataset {
       category: m.category,
       basePower: m.basePower,
       accuracy: m.accuracy,
+      target: m.target,
       shortDesc: m.shortDesc,
       desc: m.desc,
     }

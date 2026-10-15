@@ -38,6 +38,8 @@ export interface MoveData {
   basePower: number
   /** Precisión (número) o `true` si el movimiento nunca falla. */
   accuracy?: number | true
+  /** Objetivo de Showdown: `"allAdjacentFoes"` (o `"allAdjacent"`), golpea a varios. */
+  target?: string
   /** Descripción corta del efecto (Showdown). */
   shortDesc?: string
   /** Descripción completa del efecto (Showdown). */

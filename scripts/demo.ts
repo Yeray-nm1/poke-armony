@@ -40,7 +40,13 @@ async function main() {
     if (a.nakedTypes.length) console.log(`  Debilidades apiladas sin resistencia: ${a.nakedTypes.join(", ")}`)
     if (a.offenseGaps.length) console.log(`  Huecos ofensivos: ${a.offenseGaps.join(", ")}`)
     if (a.unanswered.length) console.log(`  Amenazas sin respuesta: ${a.unanswered.join(", ")}`)
-    if (a.missingRoles.length) console.log(`  Roles ausentes: ${a.missingRoles.join(", ")}`)
+    for (const plan of a.roleFocus.plans) {
+      const failed = plan.checks.filter((c) => !c.ok).map((c) => c.label)
+      console.log(
+        `  Plan ${plan.label}: ${failed.length ? "✗ " + failed.join(" · ") : "✓ bien sostenido"}`,
+      )
+    }
+    if (a.roleFocus.speedControl) console.log("  Control de velocidad: presente (lo puntúa Velocidad)")
   }
 
   diagnose("EQUIPO REAL (ladder)", strongTeam)
