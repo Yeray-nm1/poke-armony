@@ -244,7 +244,7 @@ export const METRIC_HINT: Record<string, string> = {
   threatClosure: "Amenazas del meta a las que el equipo puede responder: resistir sus ataques y golpearlas súper efectivo",
   roles: "Roles clave cubiertos: control de velocidad, redirección, Protect, seteo, etc.",
   speed: "Velocidad comparada con el meta y control de velocidad",
-  synergy: "Sinergias entre miembros: combos, bailes, redirección, setup mutuo",
+  synergy: "Sinergias entre miembros: clima/terreno + movimiento, Fake Out + seteo, redirección + seteo",
   redundancy: "Solapamiento de roles y tipos entre miembros — cuanto menos, mejor",
 }
 
