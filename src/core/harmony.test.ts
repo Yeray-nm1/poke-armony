@@ -3,7 +3,7 @@ import { dex, meta, moves } from "./fixtures"
 import {
   analyze, defensiveBalance, offensiveCoverage, redundancy, roleCoverage, speciesOf, speedProfile, synergy, threatClosure,
 } from "./harmony"
-import type { Team, TeamSet } from "./types"
+import type { Meta, Pokedex, Team, TeamSet } from "./types"
 
 const mon = (id: string, attacks: string[], extra: Partial<TeamSet> = {}): TeamSet => ({ id, attacks, ...extra })
 
@@ -82,6 +82,13 @@ describe("roles y sinergia", () => {
     expect(r.missing).toContain("redirection")
   })
 
+  it("el control de velocidad no puntúa como rol, pero se reporta", () => {
+    const r = roleCoverage([mon("charizard", ["Tailwind", "Protect"])])
+    expect(r.missing).not.toContain("speed-control")
+    expect(r.speedControl).toBe(true)
+    expect(roleCoverage(balancedTeam).speedControl).toBe(false)
+  })
+
   it("suma sinergia de terreno + abusador", () => {
     const team: Team = [mon("venusaur", ["Grassy Glide", "Protect"], { ability: "Grassy Surge" })]
     expect(synergy(team).hits).toBeGreaterThanOrEqual(1)
@@ -95,6 +102,33 @@ describe("redundancia", () => {
     expect(redundancy(team, dex)).toBeGreaterThan(0)
   })
 })
+
+// Fixtures propios de velocidad: mismo stat base (80) con naturalezas/objetos
+// distintos, para aislar la inferencia de SP y el Choice Scarf de la oposición.
+const spe80 = { hp: 80, atk: 80, def: 80, spa: 80, spd: 80, spe: 80 }
+const fastDex: Pokedex = {
+  ...dex,
+  me: { name: "Me", types: ["Normal"], baseStats: { ...spe80, spe: 100 } },
+  slowmon: { name: "Slowmon", types: ["Normal"], baseStats: spe80 },
+  fastmon: { name: "Fastmon", types: ["Normal"], baseStats: spe80 },
+  scarfmon: { name: "Scarfmon", types: ["Normal"], baseStats: spe80 },
+}
+const fastMeta: Meta = {
+  format: "M-C",
+  tournaments: 1,
+  teams: 1,
+  source: "test",
+  usage: [
+    { id: "slowmon", name: "Slowmon", count: 50, pct: 50 },
+    { id: "scarfmon", name: "Scarfmon", count: 50, pct: 50 },
+    { id: "fastmon", name: "Fastmon", count: 50, pct: 50 },
+  ],
+  byId: {
+    slowmon: { moves: [], items: [], abilities: [], natures: [{ name: "Brave", pct: 100 }] },
+    scarfmon: { moves: [], items: [{ name: "Choice Scarf", pct: 100 }], abilities: [], natures: [{ name: "Brave", pct: 100 }] },
+    fastmon: { moves: [], items: [], abilities: [], natures: [{ name: "Timid", pct: 100 }] },
+  },
+}
 
 describe("perfil de velocidad con SP reales", () => {
   it("usa los SP y la naturaleza del usuario para la velocidad a L50", () => {
@@ -114,7 +148,35 @@ describe("perfil de velocidad con SP reales", () => {
     const s1 = speedProfile(slow, dex, meta)
     const s2 = speedProfile(fast, dex, meta)
     expect(s1.fastest).toBeLessThan(s2.fastest)
-    expect(s1.score).toBeLessThan(s2.score)
+    expect(s1.scenarios.none).toBeLessThan(s2.scenarios.none)
+  })
+
+  it("precalcula los 3 escenarios de campo y detecta el control del equipo", () => {
+    const team: Team = [mon("charizard", ["Flamethrower", "Tailwind", "Trick Room"], { sp: { spe: 32 }, nature: "Timid" })]
+    const s = speedProfile(team, dex, meta)
+    expect(s.hasTailwind).toBe(true)
+    expect(s.hasTrickRoom).toBe(true)
+    // Tailwind solo puede mejorar la carrera (te duplica la velocidad).
+    expect(s.scenarios.tailwind).toBeGreaterThanOrEqual(s.scenarios.none)
+    expect(speedProfile([mon("charizard", ["Flamethrower"])], dex, meta)).toMatchObject({ hasTailwind: false, hasTrickRoom: false })
+  })
+
+  it("bajo Trick Room el equipo lento puntúa más que el rápido", () => {
+    const slow: Team = [mon("blastoise", ["Surf"])]
+    const fast: Team = [mon("charizard", ["Flamethrower"], { sp: { spe: 32 }, nature: "Timid" })]
+    const s1 = speedProfile(slow, dex, meta)
+    const s2 = speedProfile(fast, dex, meta)
+    expect(s1.scenarios.trickroom).toBeGreaterThan(s2.scenarios.trickroom)
+  })
+
+  it("infiere los SP de la oposición de su naturaleza y aplica Choice Scarf", () => {
+    // Miembro a 120 de velocidad (base 100 sin inversión).
+    const team: Team = [mon("me", ["Protect"])]
+    const s = speedProfile(team, fastDex, fastMeta)
+    // slowmon: Brave ⇒ 0 SP ⇒ 90 (< 120 ⇒ ganas).
+    // scarfmon: Brave + Choice Scarf ⇒ 90×1.5 = 135 (> 120 ⇒ pierdes).
+    // fastmon: Timid ⇒ 32 SP + ×1.1 = 145 (> 120 ⇒ pierdes).
+    expect(s.scenarios.none).toBeCloseTo(50 / 150, 5)
   })
 })
 
@@ -144,6 +206,10 @@ describe("armonía compuesta", () => {
       expect(a.harmony).toBeGreaterThanOrEqual(0)
       expect(a.harmony).toBeLessThanOrEqual(100)
       expect(a.weakest).toHaveLength(3)
+      // La métrica base de velocidad es la del escenario sin control.
+      expect(a.speedScenarios.none).toBe(a.metrics.speed)
+      for (const v of Object.values(a.speedScenarios)) expect(v).toBeGreaterThanOrEqual(0)
+      for (const v of Object.values(a.speedScenarios)) expect(v).toBeLessThanOrEqual(1)
     }
   })
 })

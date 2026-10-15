@@ -2,10 +2,22 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { motion } from "motion/react"
-import { groupProposals, proposeEdits, speciesOf, toId, type Analysis, type Proposal, type Team } from "@/core"
+import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, toId, weakestMetrics, type Analysis, type Field, type Proposal, type Team } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
 import { Button, Gauge, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
+
+const FIELD_LABEL: Record<Field, string> = {
+  none: "Sin control",
+  tailwind: "Tailwind",
+  trickroom: "Trick Room",
+}
+
+const FIELD_HINT: Record<Field, string> = {
+  none: "Carrera base, sin control de velocidad. Si el setter cae, esto es lo que tienes.",
+  tailwind: "Con Tailwind activo: tu velocidad se duplica.",
+  trickroom: "Con Trick Room activo: el eje se invierte y gana el más lento.",
+}
 
 export function DiagnosisPanel({
   dataset,
@@ -62,6 +74,30 @@ export function DiagnosisPanel({
   const refining = authoritative === null
   const { tune, remake, swap } = useMemo(() => groupProposals(proposals), [proposals])
 
+  // Escenario de campo (Velocidad). El toggle solo cambia qué escenario precalculado
+  // se muestra; la armonía se recompone con la velocidad elegida, sin recalcular.
+  const [field, setField] = useState<Field>("none")
+  const available = useMemo<Field[]>(() => {
+    const mv = new Set(deferredTeam.flatMap((s) => s.attacks ?? []))
+    return ["none", ...(mv.has("Tailwind") ? (["tailwind"] as const) : []), ...(mv.has("Trick Room") ? (["trickroom"] as const) : [])]
+  }, [deferredTeam])
+  const activeField = available.includes(field) ? field : "none"
+  const fields = useMemo(
+    () =>
+      analysis.speedScenarios ?? {
+        none: analysis.metrics.speed,
+        tailwind: analysis.metrics.speed,
+        trickroom: analysis.metrics.speed,
+      },
+    [analysis.speedScenarios, analysis.metrics.speed],
+  )
+  const metrics = useMemo(
+    () => ({ ...analysis.metrics, speed: fields[activeField] }),
+    [analysis.metrics, fields, activeField],
+  )
+  const harmony = useMemo(() => harmonyFromMetrics(metrics), [metrics])
+  const weakest = useMemo(() => weakestMetrics(metrics), [metrics])
+
   const unanswered = useMemo(() => new Set(analysis.unanswered.map(toId)), [analysis.unanswered])
   const nameOf = (id: string) => speciesOf(dataset.pokedex, id)?.name ?? id
 
@@ -95,9 +131,9 @@ export function DiagnosisPanel({
           <span className="label text-muted">Resumen</span>
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
-              <Gauge value={analysis.harmony / 100} />
+              <Gauge value={harmony / 100} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="num text-3xl font-bold leading-none text-fg">{analysis.harmony}</span>
+              <span className="num text-3xl font-bold leading-none text-fg">{harmony}</span>
               <span className="label mt-1">/ 100</span>
             </div>
           </div>
@@ -105,7 +141,7 @@ export function DiagnosisPanel({
             <p className="text-sm text-muted">
               Puntos débiles:{" "}
               <span className="font-medium text-warn">
-                {analysis.weakest.map((k) => METRIC_LABEL[k] ?? k).join(", ") || "ninguno"}
+                {weakest.map((k) => METRIC_LABEL[k] ?? k).join(", ") || "ninguno"}
               </span>
             </p>
             {analysis.unanswered.length > 0 && (
@@ -152,13 +188,41 @@ export function DiagnosisPanel({
         </div>
 
         <div className="space-y-3 border-t border-line/70 pt-4">
-          <span className="label text-muted">Métricas de armonía</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="label text-muted">Métricas de armonía</span>
+            {available.length > 1 && (
+              <div
+                role="radiogroup"
+                aria-label="Escenario de campo para la velocidad"
+                className="flex items-center gap-0.5 rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5"
+              >
+                {available.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={activeField === f}
+                    onClick={() => setField(f)}
+                    title={FIELD_HINT[f]}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                      activeField === f
+                        ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
+                        : "text-muted hover:bg-ink-800/60 hover:text-fg"
+                    }`}
+                  >
+                    {f === "none" ? null : <MetricIcon metric="speed" />}
+                    {FIELD_LABEL[f]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-          {Object.entries(analysis.metrics).map(([k, v]) => (
+          {Object.entries(metrics).map(([k, v]) => (
             <MetricBar
               key={k}
               label={METRIC_LABEL[k] ?? k}
-              hint={METRIC_HINT[k]}
+              hint={k === "speed" && activeField !== "none" ? `${METRIC_HINT[k]} · Escenario: ${FIELD_LABEL[activeField]}.` : METRIC_HINT[k]}
               value={v}
               invert={k === "redundancy"}
               icon={<MetricIcon metric={k} />}

@@ -47,6 +47,13 @@ métricas más bajas; el recomendador es contrafactual (puntúa el equipo antes/
 de cada edición y rankea por **Δ armonía**), de menor a mayor invasividad:
 ① ajuste → ② rehacer → ③ sustitución (cualquier Pokémon legal; el uso del meta solo ordena).
 
+La **velocidad** mide la carrera real frente al top del meta (ponderada por uso; SP,
+naturaleza y objeto reales del usuario; de la oposición se infieren los SP de su
+naturaleza más común y se aplica el **Choice Scarf**). El **control de velocidad**
+(Tailwind / Trick Room) **no puntúa como rol**: la UI ofrece un **selector de campo**
+que alterna entre los tres escenarios **precalculados** —sin control / Tailwind ×2 /
+Trick Room invertido— y recompone el gauge al instante, sin recalcular.
+
 ## Funcionalidades
 
 - **Motor puro** (`src/core`): typechart, stats, armonía, cierre de amenazas y recomendador,
@@ -89,8 +96,9 @@ contra el pokedex (que usa claves sin guion).
 
 - Los ids de **Limitless** llevan guion (`arcanine-hisui`) y los del **pokedex de Showdown**
   no (`arcaninehisui`): el motor normaliza con `toId` (antes se perdían las formas regionales).
-- El meta de Limitless **no trae Stat Points** → la velocidad de la oposición se modela con
-  inversión máxima para los rápidos (base ≥ 90) y 0 para el resto; la del usuario usa sus SP reales.
+- El meta de Limitless **no trae Stat Points** → la velocidad de la oposición se infiere de su
+  **naturaleza más común** (si sube velocidad ⇒ 32 SP; si la baja ⇒ 0; si es neutra, según el stat
+  base ≥ 90), aplica su **naturaleza y Choice Scarf** reales; la del usuario usa sus SP/naturaleza/objeto reales.
 - Las **Megas nuevas de Champions** (Absol-Z, etc.) y su roster legal vienen de `@smogon/calc`
   (gen 0) y se fusionan en el pokedex durante la ingesta (runtime); se **añaden** solo las especies
   que Showdown no tiene (no se sobreescriben las base). Sus stats están **contrastadas con

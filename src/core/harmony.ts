@@ -5,7 +5,7 @@
 // pokedex de Showdown usa ids sin guion ("arcaninehisui"). Normalizamos SIEMPRE
 // las búsquedas de especie con `toId` para no perder formas regionales.
 import { TYPES, effVs } from "./typechart"
-import { statAt50 } from "./stats"
+import { natureEffect, SP_MAX, statAt50 } from "./stats"
 import type { Meta, MoveData, MoveDex, Pokedex, SetStats, SpeciesData, Team, TeamSet } from "./types"
 
 export type { Meta, SetStats } from "./types"
@@ -108,45 +108,102 @@ export function threatClosure(team: Team, dex: Pokedex, moves: MoveDex, meta: Me
 }
 
 // ── 4. Cobertura de roles ────────────────────────────────────────────
+// El control de velocidad (Tailwind/Icy Wind/Trick Room…) NO puntúa aquí: lo
+// representa el escenario de campo en la métrica de Velocidad. Aquí solo se
+// reporta como información (`speedControl`) para no contarlo dos veces.
 const ROLES: Record<string, string[]> = {
-  "speed-control": ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room", "Electroweb", "Bulldoze"],
   redirection: ["Follow Me", "Rage Powder"],
   protect: ["Protect", "Detect"],
   "fake-out": ["Fake Out"],
   "win-condition": ["Nasty Plot", "Swords Dance", "Calm Mind", "Dragon Dance", "Bulk Up", "Victory Dance"],
   "hazard-control": ["Rapid Spin", "Defog", "Mortal Spin", "Court Change"],
 }
+const SPEED_CONTROL = ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room", "Electroweb", "Bulldoze"]
 const ALL_ROLES = [...Object.keys(ROLES), "intimidate"]
 
 export function roleCoverage(team: Team) {
   const present = new Set<string>()
+  let speedControl = false
   for (const s of team) {
     const mv = new Set(s.attacks ?? [])
     for (const [role, list] of Object.entries(ROLES)) if (list.some((m) => mv.has(m))) present.add(role)
     if (s.ability === "Intimidate") present.add("intimidate")
+    if (SPEED_CONTROL.some((m) => mv.has(m))) speedControl = true
   }
-  return { score: present.size / ALL_ROLES.length, present: [...present], missing: ALL_ROLES.filter((r) => !present.has(r)) }
+  return {
+    score: present.size / ALL_ROLES.length,
+    present: [...present],
+    missing: ALL_ROLES.filter((r) => !present.has(r)),
+    speedControl,
+  }
 }
 
 // ── 5. Perfil de velocidad ───────────────────────────────────────────
+/** Escenario de campo que altera la carrera de velocidad. */
+export type Field = "none" | "tailwind" | "trickroom"
+
+const SCARF_MULT = 1.5
+const isScarf = (item?: string) => !!item && toId(item) === "choicescarf"
+
+/**
+ * SP de velocidad inferidos para la oposición: Limitless no publica el reparto,
+ * así que lo deducimos de su naturaleza más común — una naturaleza que sube
+ * velocidad ⇒ inversión máxima; que la baja ⇒ ninguna — y, si es neutra
+ * respecto a la velocidad, del propio stat base (≥ 90 ⇒ máxima).
+ */
+function inferSpeedSp(nature: string | undefined, base: number): number {
+  const eff = natureEffect(nature)
+  if (eff.plus === "spe") return SP_MAX
+  if (eff.minus === "spe") return 0
+  return base >= 90 ? SP_MAX : 0
+}
+
+/**
+ * Perfil de velocidad. Devuelve la puntuación de la carrera frente al meta en
+ * los **tres escenarios de campo** (sin control / Tailwind / Trick Room) para
+ * que la UI pueda alternarlos sin recalcular nada.
+ *
+ * - `none`: ganas a las amenazas más lentas que tu miembro más rápido.
+ * - `tailwind`: tus velocidades ×2.
+ * - `trickroom`: se invierte el eje — bajo TR ganas a quien sea más rápido que
+ *   tu miembro más lento (el lento actúa primero).
+ */
 export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
-  // Velocidad REAL a L50 con los SP y naturaleza de cada miembro del equipo.
+  // Velocidad real a L50 con SP, naturaleza y objeto (Choice Scarf ×1.5).
   const teamSpeeds = team.map((s) => {
     const sp = speciesOf(dex, s.id)
     if (!sp) return 0
-    return statAt50(sp.baseStats.spe, s.sp?.spe ?? 0, "spe", s.nature)
+    const real = statAt50(sp.baseStats.spe, s.sp?.spe ?? 0, "spe", s.nature)
+    return isScarf(s.item) ? Math.floor(real * SCARF_MULT) : real
   })
-  const fastest = Math.max(0, ...teamSpeeds)
-  // Limitless no publica SP de la oposición: modelamos cada amenaza con
-  // inversión máxima de velocidad si su base ≥ 90 (32 SP + Timid) y 0 si no.
+  const valid = teamSpeeds.filter((v) => v > 0)
+  const fastest = valid.length ? Math.max(...valid) : 0
+  const slowest = valid.length ? Math.min(...valid) : 0
+
   const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
-  const oppSpeed = (u: (typeof top)[number]) => {
-    const base = speciesOf(dex, u.id)!.baseStats.spe
-    return statAt50(base, base >= 90 ? 32 : 0, "spe", base >= 90 ? "Timid" : undefined)
-  }
-  const outspeed = top.filter((u) => oppSpeed(u) < fastest).length
-  const hasControl = team.some((s) => s.attacks.some((m) => ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room"].includes(m)))
-  return { score: top.length ? clamp01(0.7 * outspeed / top.length + (hasControl ? 0.3 : 0)) : 0, fastest, hasControl, teamSpeeds }
+  const total = top.reduce((a, u) => a + u.pct, 0) || 1
+  const speeds = top.map((u) => {
+    const sp = speciesOf(dex, u.id)!
+    const stats = meta.byId[u.id]
+    const nature = stats?.natures[0]?.name
+    const real = statAt50(sp.baseStats.spe, inferSpeedSp(nature, sp.baseStats.spe), "spe", nature)
+    return isScarf(stats?.items[0]?.name) ? Math.floor(real * SCARF_MULT) : real
+  })
+  const credit = (wins: (oppSpeed: number) => boolean) =>
+    top.reduce((acc, u, i) => (wins(speeds[i]) ? acc + u.pct : acc), 0) / total
+
+  const scenarios: Record<Field, number> = valid.length
+    ? {
+        none: clamp01(credit((o) => o < fastest)),
+        tailwind: clamp01(credit((o) => o < fastest * 2)),
+        trickroom: clamp01(credit((o) => o > slowest)),
+      }
+    : { none: 0, tailwind: 0, trickroom: 0 }
+
+  const hasTailwind = team.some((s) => (s.attacks ?? []).includes("Tailwind"))
+  const hasTrickRoom = team.some((s) => (s.attacks ?? []).includes("Trick Room"))
+
+  return { scenarios, fastest, slowest, teamSpeeds, hasTailwind, hasTrickRoom }
 }
 
 // ── 6. Sinergia ──────────────────────────────────────────────────────
@@ -187,6 +244,8 @@ export interface TypeCoverage {
 export interface Analysis {
   harmony: number
   metrics: { defense: number; offense: number; threatClosure: number; roles: number; speed: number; synergy: number; redundancy: number }
+  /** Velocidad por escenario de campo (`metrics.speed` = `speedScenarios.none`). */
+  speedScenarios: Record<Field, number>
   weakest: string[]
   unanswered: string[]
   missingRoles: string[]
@@ -215,6 +274,13 @@ export function harmonyFromMetrics(metrics: Analysis["metrics"]): number {
   return +(100 * clamp01(base - REDUNDANCY_WEIGHT * metrics.redundancy)).toFixed(1)
 }
 
+/** Las 3 métricas más bajas (excluye `redundancy`), para el titular de puntos débiles. */
+export function weakestMetrics(metrics: Analysis["metrics"]): string[] {
+  return (Object.entries(metrics) as [string, number][])
+    .filter(([k]) => k !== "redundancy")
+    .sort((a, b) => a[1] - b[1]).slice(0, 3).map(([k]) => k)
+}
+
 export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, opts: AnalyzeOptions = {}): Analysis {
   const d = defensiveBalance(team, dex)
   const o = offensiveCoverage(team, dex, moves, meta)
@@ -226,13 +292,11 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
 
   const metrics = {
     defense: d.score, offense: o.score, threatClosure: t.score,
-    roles: r.score, speed: sp.score, synergy: sy.score, redundancy: red,
+    roles: r.score, speed: sp.scenarios.none, synergy: sy.score, redundancy: red,
   }
   const harmony = harmonyFromMetrics(metrics)
 
-  const weakest = (Object.entries(metrics) as [string, number][])
-    .filter(([k]) => k !== "redundancy")
-    .sort((a, b) => a[1] - b[1]).slice(0, 3).map(([k]) => k)
+  const weakest = weakestMetrics(metrics)
 
   const typeCoverage: TypeCoverage[] = d.breakdown.map((b) => ({
     type: b.type,
@@ -241,7 +305,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
   }))
 
   return {
-    harmony: +harmony.toFixed(1), metrics, weakest,
+    harmony: +harmony.toFixed(1), metrics, speedScenarios: sp.scenarios, weakest,
     unanswered: t.unanswered, missingRoles: r.missing,
     offenseGaps: o.gaps, nakedTypes: d.breakdown.filter((b) => b.weak >= 2 && b.resist === 0).map((b) => b.type),
     typeCoverage,
