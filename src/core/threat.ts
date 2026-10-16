@@ -61,6 +61,11 @@ export function evaluateThreat(
     const pTypes = mon?.types ?? []
     const noWeak = attackTypes.every((at) => effVs(at, pTypes) <= 1)
     const resists = attackTypes.some((at) => effVs(at, pTypes) < 1)
+    // «Inmune» no es «resiste»: un ×0 anula el ataque por completo, así que se
+    // nombra aparte del ×0,5.
+    const immuneTo = attackTypes.filter((at) => effVs(at, pTypes) === 0)
+    const immuneWord =
+      immuneTo.length === attackTypes.length ? "es inmune a su ataque" : `es inmune a ${immuneTo.join(" / ")}`
     const threatens = set.attacks.some((mvn) => {
       const m = moves[toId(mvn)]
       return !!m && m.category !== "Status" && m.basePower > 0 && effVs(m.type, oppTypes) >= 2
@@ -72,6 +77,11 @@ export function evaluateThreat(
       const weakTo = attackTypes.filter((at) => effVs(at, pTypes) > 1)
       verdict = "weak"
       reason = `débil a ${weakTo.join(" / ")}`
+    } else if (immuneTo.length > 0 && threatens) {
+      verdict = "counter"
+      reason = `${immuneWord} y le golpea súper eficaz`
+    } else if (immuneTo.length > 0) {
+      reason = `${immuneWord}, pero no le amenaza`
     } else if (resists && threatens) {
       verdict = "counter"
       reason = "resiste su ataque y le golpea súper eficaz"

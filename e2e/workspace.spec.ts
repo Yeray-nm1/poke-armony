@@ -18,22 +18,29 @@ test.describe("Workspace", () => {
     expect(harmony).toBeGreaterThan(0)
     expect(harmony).toBeLessThanOrEqual(100)
 
-    // Métricas de armonía: las siete etiquetas.
+    // Métricas de armonía: las seis etiquetas.
     for (const label of [
       "Defensa",
       "Cobertura ofensiva",
       "Cierre de amenazas",
-      "Roles",
+      "Foco del equipo",
       "Velocidad",
-      "Sinergia",
       "Redundancia",
     ]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible()
     }
 
-    // Pestañas del análisis.
+    // Pestañas del análisis (diagnóstico).
     await expect(page.getByRole("tab", { name: /Sugerencias/ })).toBeVisible()
     await expect(page.getByRole("tab", { name: /Amenazas/ })).toBeVisible()
+
+    // La card «Tu equipo» alterna entre edición y compatibilidad (vista de foco).
+    const compatTab = page.getByRole("tab", { name: "Compatibilidad" })
+    await expect(compatTab).toBeVisible()
+    await compatTab.click()
+    await expect(page.getByText("Elige un miembro", { exact: false })).toBeVisible()
+    await page.getByRole("tab", { name: "Equipo" }).click()
+    await expect(teamSlots(page)).toHaveCount(6)
   })
 
   test("reordena las ranuras del equipo con drag & drop", async ({ page }) => {

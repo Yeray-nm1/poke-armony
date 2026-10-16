@@ -6,7 +6,7 @@
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { ChevronDown, Info, Layers, Shield, ShieldCheck, Sparkles, Swords, Timer, Users } from "lucide-react"
+import { ChevronDown, Info, Layers, Shield, ShieldCheck, Swords, Timer, Users } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { StatKey, Tier, TypeCoverage } from "@/core"
 
@@ -190,7 +190,6 @@ export const METRIC_LABEL: Record<string, string> = {
   threatClosure: "Cierre de amenazas",
   roles: "Foco del equipo",
   speed: "Velocidad",
-  synergy: "Sinergia",
   redundancy: "Redundancia",
 }
 
@@ -201,7 +200,6 @@ export const METRIC_ICON: Record<string, LucideIcon> = {
   threatClosure: ShieldCheck,
   roles: Users,
   speed: Timer,
-  synergy: Sparkles,
   redundancy: Layers,
 }
 
@@ -244,7 +242,6 @@ export const METRIC_HINT: Record<string, string> = {
   threatClosure: "Amenazas del meta a las que el equipo puede responder: resistir sus ataques y golpearlas súper efectivo",
   roles: "Qué plan declara el equipo (Trick Room, ritmo rápido, clima, terreno, seteo…) y cuán bien lo sostiene. No penaliza por no tener un rol concreto.",
   speed: "Por cada amenaza del top, cuántos de tus miembros están por encima en velocidad. El selector de campo cambia el escenario: sin control, Tailwind ×2 o Trick Room invertido.",
-  synergy: "Sinergias entre miembros: clima/terreno + movimiento, Fake Out + seteo, redirección + seteo",
   redundancy: "Solapamiento de roles y tipos entre miembros — cuanto menos, mejor",
 }
 

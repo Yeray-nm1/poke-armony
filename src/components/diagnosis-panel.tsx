@@ -116,6 +116,9 @@ export function DiagnosisPanel({
     () => speedProfile(deferredTeam, dataset.pokedex, dataset.meta),
     [deferredTeam, dataset],
   )
+  // Compatibilidad por parejas (pura, por movimientos/habilidad/objeto/tipos):
+  // el detalle explicable que sustituye a la antigua métrica de Sinergia. Vive en
+  // la card «Tu equipo» (vista de foco), no aquí.
   const fields = speed.scenarios
   const metrics = useMemo(
     () => ({ ...analysis.metrics, speed: fields[activeField] }),

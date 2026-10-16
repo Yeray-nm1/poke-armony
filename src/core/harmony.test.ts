@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { dex, meta, moves } from "./fixtures"
 import {
-  analyze, defensiveBalance, offensiveCoverage, pieceRoles, redundancy, roleFocus, speciesOf, speedProfile, synergy, threatClosure,
+  analyze, defensiveBalance, offensiveCoverage, pieceRoles, redundancy, roleFocus, speciesOf, speedProfile, threatClosure,
 } from "./harmony"
 import type { Meta, Pokedex, Team, TeamSet } from "./types"
 
@@ -75,7 +75,7 @@ describe("cierre de amenazas", () => {
   })
 })
 
-describe("roles y sinergia", () => {
+describe("roles", () => {
   it("deduce funciones por pieza (Protect no es rol: es ruido)", () => {
     const incin = pieceRoles(mon("incineroar", ["Flare Blitz", "Fake Out"], { ability: "Intimidate" }), moves)
     expect(incin).toEqual(expect.arrayContaining(["fakeOut", "statDrop"]))
@@ -135,12 +135,6 @@ describe("roles y sinergia", () => {
     )
     expect(tw.plans.map((p) => p.id)).toEqual(["tailwind"])
     expect(tw.score).toBe(1)
-  })
-
-  it("suma sinergia de terreno + abusador", () => {
-    const team: Team = [mon("venusaur", ["Grassy Glide", "Protect"], { ability: "Grassy Surge" })]
-    expect(synergy(team).hits).toBeGreaterThanOrEqual(1)
-    expect(synergy([mon("charizard", ["Flamethrower", "Protect"])]).hits).toBe(0)
   })
 })
 

@@ -33,6 +33,14 @@ describe("evaluateThreat", () => {
     expect(report.answered).toBe(true)
   })
 
+  it("dice «inmune» cuando el ×0 anula el ataque, no «resiste»", () => {
+    // La amenaza usa Tierra; Charizard (Volador) es inmune, no un simple resistente.
+    const r = evaluateThreat(team, "garchomp", dex, moves, meta)
+    const zard = r.matchups.find((m) => m.id === "charizard")
+    expect(zard?.reason).toMatch(/inmune/)
+    expect(zard?.reason).not.toMatch(/resiste/)
+  })
+
   it("marca la amenaza como no respondida si nadie es contra", () => {
     const solo: Team = [{ id: "charizard", attacks: ["Flamethrower", "Protect"] }]
     expect(evaluateThreat(solo, "incineroar", dex, moves, meta).answered).toBe(false)

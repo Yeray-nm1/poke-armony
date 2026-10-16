@@ -1,6 +1,6 @@
 // Demo en consola con datos reales: diagnóstico + recomendaciones.
 // Uso: pnpm demo   (ingiere en vivo desde Showdown y Limitless)
-import { analyze, groupProposals, proposeEdits, type Team } from "../src/core"
+import { analyze, groupProposals, proposeEdits, teamCompatibility, type Team } from "../src/core"
 import { fetchBase } from "../src/lib/dataset"
 import { fetchMeta } from "../src/lib/meta"
 
@@ -47,6 +47,13 @@ async function main() {
       )
     }
     if (a.roleFocus.speedControl) console.log("  Control de velocidad: presente (lo puntúa Velocidad)")
+    const compat = teamCompatibility(team, pokedex, moves, meta)
+    if (compat.synergies.length || compat.conflicts.length) {
+      console.log(`  Compatibilidad: ${compat.synergies.length} sinergia(s) · ${compat.conflicts.length} roce(s)`)
+      for (const note of [...compat.conflicts, ...compat.synergies].slice(0, 6)) {
+        console.log(`   · [${note.tag}] ${note.detail}`)
+      }
+    }
   }
 
   diagnose("EQUIPO REAL (ladder)", strongTeam)

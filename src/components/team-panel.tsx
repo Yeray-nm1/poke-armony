@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { isValidSpread, speciesOf } from "@/core"
+import { useMemo, useState } from "react"
+import { isValidSpread, speciesOf, teamCompatibility } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
+import { CompatibilityPanel } from "./compatibility-panel"
 import { Panel, SectionTitle, Sprite, TYPE_COLOR, TypeBadge, typeColor } from "./ui"
 
 export function TeamPanel({ dataset }: { dataset: Dataset }) {
@@ -12,6 +13,17 @@ export function TeamPanel({ dataset }: { dataset: Dataset }) {
   const move = useTeam((s) => s.move)
   const [drag, setDrag] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
+  const [view, setView] = useState<"team" | "compat">("team")
+
+  // Compatibilidad por parejas (pura): se calcula solo para la vista de foco.
+  const report = useMemo(
+    () => teamCompatibility(team, dataset.pokedex, dataset.moves, dataset.meta),
+    [team, dataset],
+  )
+  const names = useMemo(
+    () => team.map((s) => speciesOf(dataset.pokedex, s.id)?.name ?? s.name ?? s.id),
+    [team, dataset],
+  )
 
   // Tipo dominante del equipo (por el tipo primario de cada miembro) para teñir
   // el acento de la cabecera del panel.
@@ -31,14 +43,36 @@ export function TeamPanel({ dataset }: { dataset: Dataset }) {
     <Panel className="rise space-y-4 [animation-delay:80ms]">
       <SectionTitle tone={dominant ? TYPE_COLOR[dominant] : undefined}
         right={
-          <span className="num text-xs text-faint">
-            equipo <span className="text-fg">{team.length}</span>/6
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="num hidden text-xs text-faint sm:inline">
+              equipo <span className="text-fg">{team.length}</span>/6
+            </span>
+            <div role="tablist" aria-label="Vista de la card" className="flex rounded-lg border border-line bg-ink-950/60 p-0.5">
+              {([["team", "Equipo"], ["compat", "Compatibilidad"]] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={`rounded-md px-2 py-1 font-display text-[11px] font-semibold tracking-wide transition-colors ${
+                    view === v ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]" : "text-muted hover:text-fg"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         }
       >
         Tu equipo
       </SectionTitle>
 
+      {view === "compat" ? (
+        <CompatibilityPanel report={report} names={names} />
+      ) : (
+      <>
       <ul className="overflow-hidden rounded-xl border border-line">
         {team.map((set, i) => {
           const species = speciesOf(dataset.pokedex, set.id)
@@ -132,6 +166,8 @@ export function TeamPanel({ dataset }: { dataset: Dataset }) {
         })}
       </ul>
       <p className="text-[11px] text-faint">Toca para editar · arrastra ⠿ para reordenar las ranuras.</p>
+      </>
+      )}
     </Panel>
   )
 }

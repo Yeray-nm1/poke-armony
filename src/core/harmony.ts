@@ -16,7 +16,10 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
 /** Busca una especie tolerando ids con/sin guion. */
 export const speciesOf = (dex: Pokedex, id: string): SpeciesData | undefined => dex[toId(id)] ?? dex[id]
 
-const WEIGHTS = { defense: 0.20, offense: 0.15, threatClosure: 0.30, roles: 0.15, speed: 0.10, synergy: 0.10 }
+// Sin «sinergia»: ese detalle vive ahora en el panel de Compatibilidad (por
+// parejas y explicable), no en un número. Su 0,10 se reparte entre Defensa y
+// Cierre de amenazas.
+const WEIGHTS = { defense: 0.25, offense: 0.15, threatClosure: 0.35, roles: 0.15, speed: 0.10 }
 const REDUNDANCY_WEIGHT = 0.10
 const TOP_N = 20
 
@@ -172,15 +175,15 @@ export interface RoleReport {
   speedControl: boolean
 }
 
-const SETUP_MOVES = [
+export const SETUP_MOVES = [
   "Nasty Plot", "Swords Dance", "Calm Mind", "Dragon Dance", "Bulk Up", "Victory Dance",
   "Belly Drum", "Quiver Dance", "Shell Smash", "Tail Glow", "Take Heart", "Iron Defense",
 ]
-const REDIRECT_MOVES = ["Follow Me", "Rage Powder"]
-const REDIRECT_ABILITIES = ["Storm Drain", "Lightning Rod"]
-const SCREEN_MOVES = ["Reflect", "Light Screen", "Aurora Veil"]
-const GUARD_MOVES = ["Wide Guard", "Quick Guard", "Crafty Shield"]
-const OFFENSE_SUPPORT_MOVES = ["Helping Hand", "Coaching", "Decorate", "Howl", "Instruct", "After You"]
+export const REDIRECT_MOVES = ["Follow Me", "Rage Powder"]
+export const REDIRECT_ABILITIES = ["Storm Drain", "Lightning Rod"]
+export const SCREEN_MOVES = ["Reflect", "Light Screen", "Aurora Veil"]
+export const GUARD_MOVES = ["Wide Guard", "Quick Guard", "Crafty Shield"]
+export const OFFENSE_SUPPORT_MOVES = ["Helping Hand", "Coaching", "Decorate", "Howl", "Instruct", "After You"]
 const STAT_DROP_MOVES = [
   "Icy Wind", "Snarl", "Will-O-Wisp", "Parting Shot", "Charm", "Fake Tears",
   "Screech", "Metal Sound", "Baby-Doll Eyes", "Tearful Look", "Feather Dance", "Scary Face",
@@ -206,8 +209,9 @@ const SURVIVAL_ITEMS = [
 /** Aguante mínimo (def + spd base) para cargar un seteo. */
 const SETUP_BULK = 170
 
-/** Cuatro climas, con lo que cada uno declara y lo que de él se aprovecha. */
-interface FieldKind {
+/** Cuatro climas, con lo que cada uno declara y lo que de él se aprovecha.
+ *  Se comparten con el panel de Compatibilidad (`compatibility.ts`). */
+export interface FieldKind {
   key: string
   label: string
   setAbilities: string[]
@@ -217,7 +221,7 @@ interface FieldKind {
   abuserItems?: string[]
 }
 
-const WEATHERS: FieldKind[] = [
+export const WEATHERS: FieldKind[] = [
   { key: "sun", label: "sol", setAbilities: ["Drought"], setMoves: ["Sunny Day"],
     abuserAbilities: ["Chlorophyll", "Solar Power", "Leaf Guard", "Flower Gift", "Harvest"],
     abuserMoves: ["Solar Beam", "Solar Blade"] },
@@ -230,7 +234,7 @@ const WEATHERS: FieldKind[] = [
     abuserAbilities: ["Slush Rush", "Ice Body"], abuserMoves: ["Blizzard"] },
 ]
 
-const TERRAINS: FieldKind[] = [
+export const TERRAINS: FieldKind[] = [
   { key: "grassy", label: "hierba", setAbilities: ["Grassy Surge"], setMoves: ["Grassy Terrain"],
     abuserAbilities: ["Grassy Pelt"], abuserMoves: ["Grassy Glide"], abuserItems: ["Grassy Seeds"] },
   { key: "electric", label: "eléctrico", setAbilities: ["Electric Surge"], setMoves: ["Electric Terrain"],
@@ -240,7 +244,7 @@ const TERRAINS: FieldKind[] = [
   { key: "misty", label: "niebla", setAbilities: ["Misty Surge"], setMoves: ["Misty Terrain"],
     abuserMoves: ["Misty Explosion"], abuserItems: ["Misty Seeds"] },
 ]
-const FIELD_ABUSER_MOVES = ["Terrain Pulse"]
+export const FIELD_ABUSER_MOVES = ["Terrain Pulse"]
 /** Control de velocidad: NO puntúa en Roles (la carrera es de Velocidad), solo etiqueta. */
 const SPEED_CONTROL = ["Tailwind", "Icy Wind", "Thunder Wave", "Trick Room", "Electroweb", "Bulldoze"]
 
@@ -557,21 +561,9 @@ export function speedProfile(team: Team, dex: Pokedex, meta: Meta) {
   }
 }
 
-// ── 6. Sinergia ──────────────────────────────────────────────────────
-export function synergy(team: Team) {
-  const abilities = new Set(team.map((s) => s.ability))
-  const allMoves = new Set(team.flatMap((s) => s.attacks ?? []))
-  const has = (list: string[]) => list.some((m) => allMoves.has(m))
-  const setup = has(SETUP_MOVES)
-  let hits = 0
-  if ((abilities.has("Grassy Surge") && allMoves.has("Grassy Glide")) ||
-      (abilities.has("Electric Surge") && allMoves.has("Rising Voltage")) ||
-      (abilities.has("Drizzle") && has(["Surf", "Muddy Water", "Hydro Pump", "Water Spout", "Wave Crash", "Liquidation", "Scald"])) ||
-      (abilities.has("Drought") && has(["Heat Wave", "Flamethrower", "Fire Blast", "Flare Blitz", "Solar Beam"]))) hits++
-  if (allMoves.has("Fake Out") && setup) hits++
-  if (has(REDIRECT_MOVES) && setup) hits++
-  return { score: hits / 3, hits }
-}
+// ── 6. (Sinergia) ────────────────────────────────────────────────────
+// El detalle de qué piezas se ayudan o se estorban ya no es una métrica: vive
+// en el panel de Compatibilidad (`compatibility.ts`), por parejas y explicado.
 
 // ── 7. Redundancia (penaliza) ────────────────────────────────────────
 export function redundancy(team: Team, dex: Pokedex) {
@@ -594,7 +586,7 @@ export interface TypeCoverage {
 
 export interface Analysis {
   harmony: number
-  metrics: { defense: number; offense: number; threatClosure: number; roles: number; speed: number; synergy: number; redundancy: number }
+  metrics: { defense: number; offense: number; threatClosure: number; roles: number; speed: number; redundancy: number }
   /** Velocidad por escenario de campo (`metrics.speed` = `speedScenarios.none`). */
   speedScenarios: Record<Field, number>
   weakest: string[]
@@ -622,7 +614,7 @@ export interface AnalyzeOptions {
 export function harmonyFromMetrics(metrics: Analysis["metrics"]): number {
   const base = WEIGHTS.defense * metrics.defense + WEIGHTS.offense * metrics.offense +
     WEIGHTS.threatClosure * metrics.threatClosure + WEIGHTS.roles * metrics.roles +
-    WEIGHTS.speed * metrics.speed + WEIGHTS.synergy * metrics.synergy
+    WEIGHTS.speed * metrics.speed
   return +(100 * clamp01(base - REDUNDANCY_WEIGHT * metrics.redundancy)).toFixed(1)
 }
 
@@ -639,12 +631,11 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
   const t = opts.closure ? opts.closure(team) : threatClosure(team, dex, moves, meta)
   const r = roleFocus(team, dex, moves, meta)
   const sp = speedProfile(team, dex, meta)
-  const sy = synergy(team)
   const red = redundancy(team, dex)
 
   const metrics = {
     defense: d.score, offense: o.score, threatClosure: t.score,
-    roles: r.score, speed: sp.scenarios.none, synergy: sy.score, redundancy: red,
+    roles: r.score, speed: sp.scenarios.none, redundancy: red,
   }
   const harmony = harmonyFromMetrics(metrics)
 
