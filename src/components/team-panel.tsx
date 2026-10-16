@@ -44,9 +44,6 @@ export function TeamPanel({ dataset }: { dataset: Dataset }) {
       <SectionTitle tone={dominant ? TYPE_COLOR[dominant] : undefined}
         right={
           <div className="flex items-center gap-2">
-            <span className="num hidden text-xs text-faint sm:inline">
-              equipo <span className="text-fg">{team.length}</span>/6
-            </span>
             <div role="tablist" aria-label="Vista de la card" className="flex rounded-lg border border-line bg-ink-950/60 p-0.5">
               {([["team", "Equipo"], ["compat", "Compatibilidad"]] as const).map(([v, label]) => (
                 <button

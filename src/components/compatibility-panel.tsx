@@ -58,11 +58,17 @@ export function CompatibilityPanel({ report, names }: { report: CompatibilityRep
   const links = linksOf.get(current) ?? []
   const conflicts = links.filter((l) => l.kind === "conflict")
   const synergies = links.filter((l) => l.kind === "synergy")
+  // Aportes de cobertura ofensiva: quién pega fuerte a los tipos que amenazan al seleccionado (b === current)
+  const coverageReceived = synergies.filter(
+    (l) => l.note.tag === "cobertura" && l.note.b === current,
+  )
+  // Aporte estratégico: resto de sinergias (incluye auto-beneficio)
+  const strategic = synergies.filter((l) => l.note.tag !== "cobertura")
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-faint">
-        Elige un miembro y mira cómo se lleva con el resto: qué aporta (→), qué recibe (←) y qué hace consigo mismo (↻).
+        Elige un miembro. Verás quién te cubre (cobertura ofensiva) y el resto del aporte estratégico.
       </p>
 
       {/* Banda de sprites: el foco. Un punto marca el tono global (rojo si choca). */}
@@ -101,8 +107,57 @@ export function CompatibilityPanel({ report, names }: { report: CompatibilityRep
           </p>
         ) : (
           <>
-            <LinkList title="Se estorba con" links={conflicts} names={names} />
-            <LinkList title="Se lleva bien con" links={synergies} names={names} />
+            {/* Cobertura ofensiva recibida (o aviso de que falta). */}
+            {coverageReceived.length === 0 ? (
+              <div className="rounded-lg border border-warn/40 bg-warn/12 p-2">
+                <p className="text-xs text-warn">
+                  Nadie del equipo le pega fuerte a los tipos que amenazan a {names[current]}.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="label text-muted">Aportes de cobertura ofensiva (lo que te cubren)</p>
+                <ul className="space-y-1.5">
+                  {coverageReceived.map((l, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Sprite name={names[l.other]} size={22} className="mt-0.5 shrink-0 rounded" />
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-[11px] text-faint">← {names[l.other]}</span>
+                          <Chip tone="brand">{l.note.tag}</Chip>
+                        </div>
+                        <p className="text-xs leading-snug text-muted">{l.note.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Aporte estratégico: clima, seteo, TR, redirección, apoyo… */}
+            {strategic.length > 0 && (
+              <div className="space-y-2">
+                <p className="label text-muted">Aporte estratégico</p>
+                <ul className="space-y-1.5">
+                  {strategic.map((l, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Sprite name={names[l.other]} size={22} className="mt-0.5 shrink-0 rounded" />
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-[11px] text-faint">
+                            {ARROW[l.dir]} {l.dir === "self" ? "él mismo" : names[l.other]}
+                          </span>
+                          <Chip tone="brand">{l.note.tag}</Chip>
+                        </div>
+                        <p className="text-xs leading-snug text-muted">{l.note.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {conflicts.length > 0 && <LinkList title="Se estorba con" links={conflicts} names={names} />}
           </>
         )}
       </div>
@@ -132,9 +187,7 @@ function LinkList({
                 <span className="font-mono text-[11px] text-faint">
                   {ARROW[l.dir]} {l.dir === "self" ? "él mismo" : names[l.other]}
                 </span>
-                <Chip tone={l.kind === "conflict" ? "bad" : l.note.tag === "cobertura" ? "default" : "brand"}>
-                  {l.note.tag}
-                </Chip>
+                <Chip tone="bad">{l.note.tag}</Chip>
               </div>
               <p className="text-xs leading-snug text-muted">{l.note.detail}</p>
             </div>
