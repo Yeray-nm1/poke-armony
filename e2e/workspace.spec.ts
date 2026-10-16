@@ -18,15 +18,8 @@ test.describe("Workspace", () => {
     expect(harmony).toBeGreaterThan(0)
     expect(harmony).toBeLessThanOrEqual(100)
 
-    // Métricas de armonía: las seis etiquetas.
-    for (const label of [
-      "Defensa",
-      "Cobertura ofensiva",
-      "Cierre de amenazas",
-      "Foco del equipo",
-      "Velocidad",
-      "Redundancia",
-    ]) {
+    // Métricas mostradas: cobertura ofensiva, redundancia y la carrera de velocidad.
+    for (const label of ["Cobertura ofensiva", "Redundancia", "Velocidad"]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible()
     }
 

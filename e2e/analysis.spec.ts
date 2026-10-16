@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { gotoWorkspace, storedTeamIds, teamNames } from "./helpers"
+import { gotoWorkspace, storedTeamIds, storedTeamJson } from "./helpers"
 
 test("aplica una recomendación y el cambio queda guardado", async ({ page }) => {
   await gotoWorkspace(page)
@@ -7,12 +7,14 @@ test("aplica una recomendación y el cambio queda guardado", async ({ page }) =>
   const aplicar = page.getByRole("button", { name: "Aplicar" })
   await expect(aplicar.first()).toBeVisible()
 
-  const antes = await teamNames(page)
+  const antes = await storedTeamJson(page)
   await aplicar.first().click()
 
-  // El equipo cambia…
-  await expect.poll(() => teamNames(page)).not.toEqual(antes)
-  // …y el nuevo equipo se persiste.
+  // El set cambia. La primera sugerencia puede ser un ajuste o un «rehacer»
+  // (mismo Pokémon, otro rol), así que se compara el equipo guardado, no las
+  // especies: el cambio puede no tocar el nombre.
+  await expect.poll(() => storedTeamJson(page)).not.toEqual(antes)
+  // El equipo sigue persistido.
   const guardado = await storedTeamIds(page)
   expect(guardado).not.toBeNull()
   expect(guardado!.length).toBeGreaterThan(0)

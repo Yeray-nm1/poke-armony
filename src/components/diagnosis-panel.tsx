@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { motion } from "motion/react"
 import { ChevronDown } from "lucide-react"
-import { groupProposals, harmonyFromMetrics, proposeEdits, speciesOf, speedProfile, toId, weakestMetrics, type Analysis, type Field, type MissingField, type Proposal, type Team } from "@/core"
+import { groupProposals, proposeEdits, speciesOf, speedProfile, toId, type Analysis, type Field, type MissingField, type Proposal, type Team } from "@/core"
 import type { Dataset } from "@/core"
 import { useTeam } from "@/lib/store"
 import { Button, Gauge, Hint, METRIC_HINT, METRIC_LABEL, MetricBar, MetricIcon, Panel, SectionTitle, TIER_META, TierBadge, TypeBadge, VulnerableTypes } from "./ui"
@@ -116,16 +116,6 @@ export function DiagnosisPanel({
     () => speedProfile(deferredTeam, dataset.pokedex, dataset.meta),
     [deferredTeam, dataset],
   )
-  // Compatibilidad por parejas (pura, por movimientos/habilidad/objeto/tipos):
-  // el detalle explicable que sustituye a la antigua métrica de Sinergia. Vive en
-  // la card «Tu equipo» (vista de foco), no aquí.
-  const fields = speed.scenarios
-  const metrics = useMemo(
-    () => ({ ...analysis.metrics, speed: fields[activeField] }),
-    [analysis.metrics, fields, activeField],
-  )
-  const harmony = useMemo(() => harmonyFromMetrics(metrics), [metrics])
-  const weakest = useMemo(() => weakestMetrics(metrics), [metrics])
 
   // Desglose de la carrera, ordenado por uso (lo que más pesa en la métrica).
   const race = useMemo(() => [...speed.threats].sort((a, b) => b.pct - a.pct), [speed])
@@ -183,19 +173,13 @@ export function DiagnosisPanel({
           <span className="label text-muted">Resumen</span>
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
-              <Gauge value={harmony / 100} />
+              <Gauge value={analysis.harmony / 100} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="num text-3xl font-bold leading-none text-fg">{harmony}</span>
+              <span className="num text-3xl font-bold leading-none text-fg">{analysis.harmony}</span>
               <span className="label mt-1">/ 100</span>
             </div>
           </div>
           <div className="min-w-0 flex-1 space-y-2.5">
-            <p className="text-sm text-muted">
-              Puntos débiles:{" "}
-              <span className="font-medium text-warn">
-                {weakest.map((k) => METRIC_LABEL[k] ?? k).join(", ") || "ninguno"}
-              </span>
-            </p>
             {analysis.unanswered.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="text-faint">Sin respuesta a:</span>
@@ -229,38 +213,7 @@ export function DiagnosisPanel({
                 ))}
               </div>
             )}
-            {analysis.roleFocus.plans.map((plan) => {
-              const failed = plan.checks.filter((c) => !c.ok)
-              return (
-                <div
-                  key={plan.id}
-                  className="flex flex-wrap items-center gap-1.5 text-xs"
-                  title={plan.checks.map((c) => c.label).join(" · ")}
-                >
-                  <span className="text-faint">{plan.label}:</span>
-                  {failed.length === 0 ? (
-                    <span className="rounded-md border border-brand/35 bg-brand/12 px-1.5 py-0.5 text-brand">
-                      bien sostenido
-                    </span>
-                  ) : (
-                    failed.map((c) => (
-                      <span
-                        key={c.label}
-                        className="rounded-md border border-warn/35 bg-warn/12 px-1.5 py-0.5 text-warn"
-                      >
-                        {c.label}
-                      </span>
-                    ))
-                  )}
-                </div>
-              )
-            })}
-            {analysis.roleFocus.speedControl && (
-              <p className="text-xs text-muted">
-                <span className="text-faint">Control de velocidad: </span>
-                presente (lo puntúa Velocidad)
-              </p>
-            )}
+
           </div>
           </div>
         </div>
@@ -268,10 +221,7 @@ export function DiagnosisPanel({
         <div className="space-y-3 border-t border-line/70 pt-4">
           <span className="label text-muted">Métricas de armonía</span>
           <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-          {Object.entries(metrics)
-            // La velocidad no se muestra aquí: su detalle vive en «Carrera de velocidad».
-            .filter(([k]) => k !== "speed")
-            .map(([k, v]) => (
+          {Object.entries(analysis.metrics).map(([k, v]) => (
             <MetricBar
               key={k}
               label={METRIC_LABEL[k] ?? k}

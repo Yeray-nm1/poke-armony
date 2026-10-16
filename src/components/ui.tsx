@@ -185,9 +185,9 @@ export function TextInput({
 }
 
 export const METRIC_LABEL: Record<string, string> = {
-  defense: "Defensa",
   offense: "Cobertura ofensiva",
-  threatClosure: "Cierre de amenazas",
+  aguante: "Aguante vs. el meta",
+  archetypes: "Arquetipos",
   roles: "Foco del equipo",
   speed: "Velocidad",
   redundancy: "Redundancia",
@@ -195,9 +195,9 @@ export const METRIC_LABEL: Record<string, string> = {
 
 /** Icono por categoría de armonía. */
 export const METRIC_ICON: Record<string, LucideIcon> = {
-  defense: Shield,
   offense: Swords,
-  threatClosure: ShieldCheck,
+  aguante: Shield,
+  archetypes: ShieldCheck,
   roles: Users,
   speed: Timer,
   redundancy: Layers,
@@ -237,9 +237,9 @@ export function Hint({
 
 /** Explicación corta de cada categoría (tooltip). */
 export const METRIC_HINT: Record<string, string> = {
-  defense: "Resistencia a los ataques del meta y debilidades apiladas",
-  offense: "Daño súper efectivo que el equipo puede hacer a las amenazas del meta",
-  threatClosure: "Amenazas del meta a las que el equipo puede responder: resistir sus ataques y golpearlas súper efectivo",
+  offense: "Amenazas del meta a las que algún movimiento del equipo golpea súper efectivo, ponderado por su uso",
+  aguante: "% del meta que alguien de tu equipo puede aguantar: resiste el ataque principal de la amenaza, ponderado por uso",
+  archetypes: "Comprobaciones cumplidas para negar los planes del meta (Trick Room, ritmo rápido, clima, seteo rival), ponderadas por cuánto el meta los juega",
   roles: "Qué plan declara el equipo (Trick Room, ritmo rápido, clima, terreno, seteo…) y cuán bien lo sostiene. No penaliza por no tener un rol concreto.",
   speed: "Por cada amenaza del top, cuántos de tus miembros están por encima en velocidad. El selector de campo cambia el escenario: sin control, Tailwind ×2 o Trick Room invertido.",
   redundancy: "Solapamiento de roles y tipos entre miembros — cuanto menos, mejor",

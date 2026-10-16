@@ -36,17 +36,14 @@ async function main() {
     console.log(`\n=== ARMONÍA · ${label} ===`)
     console.log(`  Harmonia: ${a.harmony}/100`)
     for (const [k, v] of Object.entries(a.metrics)) console.log(`   · ${k.padEnd(14)} ${pct(v)}`)
-    console.log(`  Métricas más débiles: ${a.weakest.join(", ")}`)
     if (a.nakedTypes.length) console.log(`  Debilidades apiladas sin resistencia: ${a.nakedTypes.join(", ")}`)
     if (a.offenseGaps.length) console.log(`  Huecos ofensivos: ${a.offenseGaps.join(", ")}`)
     if (a.unanswered.length) console.log(`  Amenazas sin respuesta: ${a.unanswered.join(", ")}`)
     for (const plan of a.roleFocus.plans) {
       const failed = plan.checks.filter((c) => !c.ok).map((c) => c.label)
-      console.log(
-        `  Plan ${plan.label}: ${failed.length ? "✗ " + failed.join(" · ") : "✓ bien sostenido"}`,
-      )
+      if (failed.length) console.log(`  Plan ${plan.label}: ✗ ${failed.join(" · ")}`)
     }
-    if (a.roleFocus.speedControl) console.log("  Control de velocidad: presente (lo puntúa Velocidad)")
+
     const compat = teamCompatibility(team, pokedex, moves, meta)
     if (compat.synergies.length || compat.conflicts.length) {
       console.log(`  Compatibilidad: ${compat.synergies.length} sinergia(s) · ${compat.conflicts.length} roce(s)`)

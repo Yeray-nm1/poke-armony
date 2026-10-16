@@ -13,10 +13,9 @@ describe("recomendador con daño real", () => {
     { id: "incineroar", attacks: ["Flare Blitz", "Protect"], item: "Sitrus Berry", ability: "Intimidate", nature: "Careful" },
   ]
 
-  it("usa el cierre de amenazas real en el análisis base", () => {
+  it("usa el cierre de amenazas real en el titular del análisis base", () => {
     const { analysis } = recommendWithDamage(team, dex, moves, meta)
     const closure = damageClosure(team, dex, meta)
-    expect(analysis.metrics.threatClosure).toBeCloseTo(closure.score, 5)
     expect(analysis.unanswered).toEqual(closure.unanswered)
   })
 
@@ -28,11 +27,11 @@ describe("recomendador con daño real", () => {
     }
   })
 
-  it("cada propuesta lleva su análisis 'after' coherente con el daño real", () => {
+  it("cada propuesta lleva su análisis 'after' con el cierre real", () => {
     const { proposals } = recommendWithDamage(team, dex, moves, meta)
     for (const p of proposals) {
       const candidate = team.map((s, i) => (i === p.slot ? p.nextSet : s))
-      expect(p.after.metrics.threatClosure).toBeCloseTo(damageClosure(candidate, dex, meta).score, 5)
+      expect(p.after.unanswered).toEqual(damageClosure(candidate, dex, meta).unanswered)
     }
   })
 })

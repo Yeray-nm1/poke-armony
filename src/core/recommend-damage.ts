@@ -2,24 +2,24 @@
 // `@smogon/calc` (vía ./damage): solo se usa en el servidor, de modo que la
 // librería nunca entra en el bundle del cliente.
 //
-// Estrategia "re-puntúa los mejores": el motor de tipos genera los candidatos
-// (rápido, igual que en el cliente) y aquí se re-puntúa con daño real el equipo
-// base y los mejores candidatos de cada nivel. La armonía se recompone con el
-// cierre de amenazas real; el resto de métricas son las mismas.
-import { harmonyFromMetrics } from "./harmony"
+// Estrategia: el motor de tipos genera los candidatos (rápido, igual que en el
+// cliente) y aquí se les añade el cierre de amenazas **real**. Carta 2: ese
+// cierre dejó de ser una métrica — es titular + listas—, así que el daño real ya
+// no compone la armonía (sigue siendo por tipos: cliente = servidor). Su papel
+// es dar el titular **real** de «Sin respuesta a…», el que ve el usuario.
 import type { Analysis } from "./harmony"
 import { groupProposals, improvedMetrics, proposeEdits } from "./recommender"
 import type { Proposal, RecommendOptions } from "./recommender"
 import { damageClosure } from "./damage"
 import type { Meta, MoveDex, Pokedex, Team } from "./types"
 
-/** Cuántos candidatos por nivel (ordenados por Δ de tipos) se re-puntúan con daño. */
+/** Cuántos candidatos por nivel (ordenados por Δ de tipos) se revisan con daño real. */
 const TOP_K_PER_TIER = 12
 
 export interface DamageRecommendation {
   /** Análisis del equipo base con el cierre de amenazas real. */
   analysis: Analysis
-  /** Propuestas re-puntuadas, ordenadas por Δ armonía (daño real). */
+  /** Propuestas con el cierre real en su análisis, ordenadas por Δ armonía. */
   proposals: Proposal[]
 }
 
@@ -40,22 +40,17 @@ export function recommendWithDamage(
     ...grouped.swap.slice(0, TOP_K_PER_TIER),
   ]
 
-  // Equipo base con cierre real.
+  // Titular de cierre con daño REAL: la armonía no cambia (ya no lleva cierre),
+  // pero la lista «Sin respuesta a…» sí sale del motor del juego.
   const baseClosure = damageClosure(team, dex, meta)
-  const baseMetrics = { ...base.metrics, threatClosure: baseClosure.score }
-  const baseHarmony = harmonyFromMetrics(baseMetrics)
-  const analysis: Analysis = { ...base, harmony: baseHarmony, metrics: baseMetrics, unanswered: baseClosure.unanswered }
+  const analysis: Analysis = { ...base, unanswered: baseClosure.unanswered }
 
   const refined: Proposal[] = []
   for (const p of chosen) {
     const candidate = team.map((s, i) => (i === p.slot ? p.nextSet : s))
     const closure = damageClosure(candidate, dex, meta)
-    const metrics = { ...p.after.metrics, threatClosure: closure.score }
-    const harmony = harmonyFromMetrics(metrics)
-    const delta = +(harmony - baseHarmony).toFixed(1)
-    if (delta <= 0) continue
-    const after: Analysis = { ...p.after, harmony, metrics, unanswered: closure.unanswered }
-    refined.push({ ...p, delta, after, fixes: improvedMetrics(analysis, after) })
+    const after: Analysis = { ...p.after, unanswered: closure.unanswered }
+    refined.push({ ...p, after, fixes: improvedMetrics(analysis, after) })
   }
 
   return { analysis, proposals: refined.sort((a, b) => b.delta - a.delta) }

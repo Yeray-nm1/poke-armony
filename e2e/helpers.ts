@@ -31,6 +31,11 @@ export async function teamNames(page: Page): Promise<string[]> {
   )
 }
 
+/** Equipo tal y como quedó guardado en localStorage (JSON crudo), o null si no hay. */
+export async function storedTeamJson(page: Page): Promise<string | null> {
+  return page.evaluate((key) => localStorage.getItem(key), STORE_KEY)
+}
+
 /** Equipo tal y como quedó guardado en localStorage (ids), o null si no hay. */
 export async function storedTeamIds(page: Page): Promise<string[] | null> {
   return page.evaluate((key) => {
