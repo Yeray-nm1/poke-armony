@@ -594,8 +594,6 @@ export interface Analysis {
   /** Velocidad por escenario de campo (no entra en `metrics`: el gauge la ignora). */
   speedScenarios: Record<Field, number>
   unanswered: string[]
-  /** Foco de roles: plan declarado y funciones de cada pieza (no puntúa en la armonía). */
-  roleFocus: RoleReport
   offenseGaps: string[]
   nakedTypes: string[]
   /** Estado de los 18 tipos: defensiva (resistido / débil apilado) y ofensiva (golpeado SE). */
@@ -613,194 +611,6 @@ export interface AnalyzeOptions {
   closure?: ClosureFn
 }
 
-// ── 7. Cobertura de arquetipos ──────────────────────────────────────
-//
-// Mide **respuestas a estrategias de equipo**, no a Pokémon sueltos: lo
-// individual ya lo cubren la ofensiva, el aguante y la lista «Sin respuesta a…».
-// Para cada arquetipo (Trick Room, ritmo rápido, clima, seteo rival) se
-// comprueba si alguien puede **negar** lo que ese plan busca, y la nota es la
-// media de comprobaciones cumplidas **ponderada por cuánto del meta lo juega**.
-// Si el meta no lo juega, no puntúa — igual que «Foco del equipo» no exige un
-// plan que el propio equipo no ha declarado.
-//
-// Todo sale de datos de set (movimientos, habilidad, uso): no hay listas de
-// equipos ni de arquetipos importadas de fuera. El tipo que manda en el clima
-// (Agua con lluvia, Fuego con sol…) es una tabla pequeña y justificada.
-
-/** Tipo que lidera cada clima: el que hay que resistir para no dejarse llevar. */
-const WEATHER_LEAD_TYPE: Record<string, string> = { rain: "Water", sun: "Fire", sand: "Ground", snow: "Ice" }
-/** Piezas que frenan un seteo rival: niegan el boost o castigan a su autor. */
-const ANTI_SETUP_MOVES = ["Haze", "Clear Smog", "Taunt", "Encore", "Roar", "Whirlwind", "Dragon Tail", "Foul Play"]
-const ANTI_SETUP_ABILITIES = ["Unaware"]
-/** Aguante mínimo (def + spd base) para ser el muro que aguanta el barrido. */
-const WALL_BULK = SETUP_BULK
-
-/** Plan ajeno que se intenta negar. */
-export type ArchetypeId = "trickroom" | "tailwind" | "weather" | "setup"
-
-export interface ArchetypeCheck {
-  label: string
-  ok: boolean
-}
-
-export interface ArchetypeReport {
-  id: ArchetypeId
-  /** Etiqueta (p. ej. «Clima: lluvia», según el clima que más juega el meta). */
-  label: string
-  /** % de uso del meta que declara el arquetipo: su peso dentro de la nota. */
-  prevalence: number
-  checks: ArchetypeCheck[]
-}
-
-export interface ArchetypeCoverageReport {
-  /** 0..1: comprobaciones cumplidas, ponderadas por cuánto del meta juega cada plan. */
-  score: number
-  archetypes: ArchetypeReport[]
-}
-
-export function archetypeCoverage(team: Team, dex: Pokedex, meta: Meta): ArchetypeCoverageReport {
-  const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
-  const attacks = team.map((s) => new Set(s.attacks ?? []))
-  const abilities = team.map((s) => s.ability ?? "")
-  const hasMove = (i: number, name: string) => attacks[i].has(name)
-  const someHas = (list: string[]) => team.some((_, i) => list.some((m) => hasMove(i, m)))
-
-  // ── Prevalencia: qué planes declara el meta.
-  // Peso = uso del Pokémon **por la frecuencia con que lleva la pieza** (una
-  // habilidad de clima está siempre; Trick Room suele ser un movimiento raro del
-  // set, así que pesa menos). Así el resultado mide cuánto del meta juega de
-  // verdad el plan, no cuántos Pokémon *podrían* llevarlo.
-  const prevalence: Record<ArchetypeId, number> = { trickroom: 0, tailwind: 0, weather: 0, setup: 0 }
-  const weatherPct = new Map<string, number>()
-  for (const u of top) {
-    const st = meta.byId[u.id]
-    const setMoves = new Map((st?.moves ?? []).map((m) => [m.name, m.pct / 100]))
-    const ability = st?.abilities[0]?.name ?? ""
-    const freq = (list: readonly string[]) => Math.max(0, ...list.map((m) => setMoves.get(m) ?? 0))
-    const trickRoom = setMoves.get("Trick Room") ?? 0
-    const tailwind = setMoves.get("Tailwind") ?? 0
-    if (trickRoom > 0) prevalence.trickroom += u.pct * trickRoom
-    if (tailwind > 0) prevalence.tailwind += u.pct * tailwind
-    for (const k of WEATHERS) {
-      const conf = Math.max(k.setAbilities.includes(ability) ? 1 : 0, freq(k.setMoves))
-      if (conf > 0) {
-        prevalence.weather += u.pct * conf
-        weatherPct.set(k.key, (weatherPct.get(k.key) ?? 0) + u.pct * conf)
-      }
-    }
-    const setup = freq(SETUP_MOVES)
-    if (setup > 0) prevalence.setup += u.pct * setup
-  }
-
-  // ── Utilidad común: carreras y prioridad.
-  const speeds = team.map((s) => realSpeed(s, dex))
-  const opp = threatSpeeds(dex, meta)
-  const pctTotal = opp.reduce((a, o) => a + o.pct, 0) || 1
-  /** % de amenazas que actuaría antes que yo si el campo se invierte (bajo TR). */
-  const beatsUnderTR = (mine: number) => opp.reduce((a, o) => a + (mine < o.speed ? o.pct : 0), 0) / pctTotal
-  /** La velocidad se acelera con el rival: control ≠ Tailwind (el suyo no te ayuda). */
-  const slows = SPEED_CONTROL.filter((m) => m !== "Tailwind")
-
-  const reports: ArchetypeReport[] = []
-
-  if (prevalence.trickroom > 0) {
-    const slowPieces = speeds.filter((v) => v > 0 && beatsUnderTR(v) >= 0.6).length
-    reports.push({
-      id: "trickroom", label: "Trick Room", prevalence: prevalence.trickroom,
-      checks: [
-        { label: "Alguien con prioridad, para no depender del orden", ok: someHas(PRIORITY_MOVES) },
-        { label: "Al menos 2 piezas lentas que se beneficien del campo invertido", ok: slowPieces >= 2 },
-      ],
-    })
-  }
-
-  if (prevalence.tailwind > 0) {
-    reports.push({
-      id: "tailwind", label: "Ritmo rápido (Tailwind)", prevalence: prevalence.tailwind,
-      checks: [
-        { label: "Algo que frene al rival: Trick Room, ondas o bajadas de velocidad", ok: someHas(slows) },
-        { label: "Prioridad, para no depender de la carrera", ok: someHas(PRIORITY_MOVES) },
-      ],
-    })
-  }
-
-  if (prevalence.weather > 0) {
-    // El tipo que manda: el clima más jugado del meta.
-    const dominant = [...weatherPct.entries()].sort((a, b) => b[1] - a[1])[0][0]
-    const lead = WEATHER_LEAD_TYPE[dominant]
-    const label = `Clima: ${WEATHERS.find((k) => k.key === dominant)?.label ?? ""}`
-    const overrides = team.some((_, i) =>
-      WEATHERS.some((k) => k.key !== dominant &&
-        (k.setAbilities.includes(abilities[i]) || k.setMoves.some((m) => hasMove(i, m)))) ||
-      ["Cloud Nine", "Air Lock"].includes(abilities[i]),
-    )
-    const resists = team.some((_, i) => {
-      const pTypes = speciesOf(dex, team[i].id)?.types
-      return !!pTypes && !!lead && effVs(lead, pTypes) < 1
-    })
-    reports.push({
-      id: "weather", label, prevalence: prevalence.weather,
-      checks: [
-        { label: "Tu propio clima u otra forma de anularlo (Cloud Nine / Air Lock)", ok: overrides },
-        { label: `Alguien que resista ${lead}`, ok: resists },
-      ],
-    })
-  }
-
-  if (prevalence.setup > 0) {
-    const stopper = team.some((_, i) =>
-      ANTI_SETUP_MOVES.some((m) => hasMove(i, m)) || ANTI_SETUP_ABILITIES.includes(abilities[i]))
-    const wall = team.some((_, i) => {
-      const sp = speciesOf(dex, team[i].id)
-      return !!sp && sp.baseStats.def + sp.baseStats.spd >= WALL_BULK
-    })
-    reports.push({
-      id: "setup", label: "Seteo rival", prevalence: prevalence.setup,
-      checks: [
-        { label: "Alguien que detenga el boost (Taunt, Encore, Haze, phazing, Unaware, Foul Play)", ok: stopper },
-        { label: "Prioridad, para revanchear el seteo", ok: someHas(PRIORITY_MOVES) },
-        { label: "Al menos un muro que aguante el barrido", ok: wall },
-      ],
-    })
-  }
-
-  const total = reports.reduce((a, r) => a + r.prevalence, 0)
-  const score = total
-    ? reports.reduce((a, r) => a + (r.checks.filter((c) => c.ok).length / r.checks.length) * r.prevalence, 0) / total
-    : 0
-  return { score: clamp01(score), archetypes: reports }
-}
-
-/**
- * Aguante vs. el meta: **% del meta que alguien del equipo puede aguantar**.
- * Para cada amenaza mira su **ataque principal** (el de mayor uso en su set
- * común; si el set no está, su primer tipo STAB) y cuenta como cubierta si
- * **algún miembro lo resiste**. Ponderado por uso, igual que las demás.
- *
- * Es el espejo puro de la «Cobertura ofensiva» (resistir vs. golpear): no
- * mide bulk —eso lo resuelve Amenazas con daño real—, sino si existe respuesta
- * defensiva. Antes pedía que un miembro no fuera débil a los **3** tipos más
- * usados de la amenaza, lo que hundía a los equipos de tipos variados y hacía
- * quedar bien a los de un mismo clúster (un equipo mono-Fuego resistía mejor
- * que uno equilibrado).
- */
-export function aguanteMeta(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta) {
-  const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
-  const total = top.reduce((a, u) => a + u.pct, 0) || 1
-  let acc = 0
-  for (const u of top) {
-    const oppTypes = speciesOf(dex, u.id)!.types
-    const primary = commonAttackTypes(meta.byId[u.id], moves)[0] ?? oppTypes[0]
-    if (!primary) continue
-    const someoneWall = team.some((s) => {
-      const pTypes = speciesOf(dex, s.id)?.types
-      return !!pTypes && effVs(primary, pTypes) < 1
-    })
-    if (someoneWall) acc += u.pct
-  }
-  return { score: clamp01(acc / total) }
-}
-
 /** Armonía compuesta a partir de las métricas (fuente única para cliente y servidor). */
 export function harmonyFromMetrics(metrics: Analysis["metrics"]): number {
   return +(100 * clamp01(metrics.offense - REDUNDANCY_WEIGHT * metrics.redundancy)).toFixed(1)
@@ -810,7 +620,6 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
   const d = defensiveBalance(team, dex)
   const o = offensiveCoverage(team, dex, moves, meta)
   const t = opts.closure ? opts.closure(team) : threatClosure(team, dex, moves, meta)
-  const r = roleFocus(team, dex, moves, meta)
   const sp = speedProfile(team, dex, meta)
   const red = redundancy(team, dex)
 
@@ -825,7 +634,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
 
   return {
     harmony: +harmony.toFixed(1), metrics, speedScenarios: sp.scenarios,
-    unanswered: t.unanswered, roleFocus: r,
+    unanswered: t.unanswered,
     offenseGaps: o.gaps, nakedTypes: d.breakdown.filter((b) => b.weak >= 2 && b.resist === 0).map((b) => b.type),
     typeCoverage,
   }

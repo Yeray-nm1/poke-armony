@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { dex, meta, moves } from "./fixtures"
 import {
-  aguanteMeta, analyze, archetypeCoverage, defensiveBalance, offensiveCoverage, pieceRoles, redundancy, roleFocus, speciesOf, speedProfile, threatClosure,
+  analyze, defensiveBalance, offensiveCoverage, pieceRoles, redundancy, roleFocus, speciesOf, speedProfile, threatClosure,
 } from "./harmony"
 import type { Meta, Pokedex, Team, TeamSet } from "./types"
 
@@ -135,86 +135,6 @@ describe("roles", () => {
     )
     expect(tw.plans.map((p) => p.id)).toEqual(["tailwind"])
     expect(tw.score).toBe(1)
-  })
-})
-
-describe("aguante vs. el meta", () => {
-  it("un equipo con respuestas defensivas aguanta más meta que el mono-Fuego", () => {
-    expect(aguanteMeta(balancedTeam, dex, moves, meta).score)
-      .toBeGreaterThan(aguanteMeta(fireTeam, dex, moves, meta).score)
-  })
-
-  it("basta una respuesta por amenaza: no exige que casi todo el equipo aguante", () => {
-    // Un solo muro (Blastoise resiste Fuego) ya cubre esa amenaza…
-    const oneWall = aguanteMeta([mon("blastoise", ["Surf"])], dex, moves, meta).score
-    expect(oneWall).toBeGreaterThan(0)
-    // …y el equipo con respuestas a cada amenaza cubre prácticamente todo el meta.
-    expect(aguanteMeta(balancedTeam, dex, moves, meta).score).toBeGreaterThan(0.9)
-  })
-})
-
-describe("cobertura de arquetipos", () => {
-  it("no puntúa planes que el meta no juega", () => {
-    // Los fixtures no traen Trick Room, Tailwind, clima ni seteo.
-    expect(archetypeCoverage(balancedTeam, dex, meta)).toEqual({ score: 0, archetypes: [] })
-  })
-
-  it("detecta el clima que manda y comprueba que puedas negarlo", () => {
-    const rain: Meta = {
-      format: "M-C", tournaments: 1, teams: 1, source: "test",
-      usage: [
-        { id: "incineroar", name: "Incineroar", count: 50, pct: 50 },
-        { id: "garchomp", name: "Garchomp", count: 20, pct: 20 },
-      ],
-      byId: {
-        incineroar: { moves: [{ name: "Flare Blitz", pct: 100 }], items: [], abilities: [{ name: "Drizzle", pct: 100 }], natures: [] },
-        garchomp: { moves: [{ name: "Earthquake", pct: 100 }], items: [], abilities: [], natures: [] },
-      },
-    }
-    const report = archetypeCoverage([mon("charizard", ["Flamethrower", "Protect"])], dex, rain)
-    const weather = report.archetypes.find((a) => a.id === "weather")!
-    expect(weather.label).toBe("Clima: lluvia")
-    expect(weather.prevalence).toBe(50)
-    // Charizard no anula el clima ni resiste Agua.
-    expect(weather.checks.map((c) => c.ok)).toEqual([false, false])
-    // Un setter de sol anula la lluvia; un Agua (Blastoise) la resiste.
-    const covered = archetypeCoverage(
-      [mon("charizard", ["Sunny Day", "Protect"]), mon("blastoise", ["Surf"])], dex, rain,
-    ).archetypes.find((a) => a.id === "weather")!
-    expect(covered.checks.every((c) => c.ok)).toBe(true)
-  })
-
-  it("marca la prioridad como respuesta a Trick Room", () => {
-    const tr: Meta = {
-      format: "M-C", tournaments: 1, teams: 1, source: "test",
-      usage: [{ id: "incineroar", name: "Incineroar", count: 30, pct: 30 }],
-      byId: {
-        incineroar: { moves: [{ name: "Trick Room", pct: 100 }], items: [], abilities: [], natures: [] },
-      },
-    }
-    const priority = (team: Team) =>
-      archetypeCoverage(team, dex, tr).archetypes.find((a) => a.id === "trickroom")!.checks[0].ok
-    expect(priority([mon("charizard", ["Flamethrower", "Protect"])])).toBe(false)
-    expect(priority([mon("charizard", ["Extreme Speed", "Flamethrower"])])).toBe(true)
-  })
-
-  it("pondera la nota por cuánto del meta juega cada plan", () => {
-    // Tailwind (40) + seteo (20): el equipo cumple Tailwind 2/2 y seteo 1/3.
-    const plans: Meta = {
-      format: "M-C", tournaments: 1, teams: 1, source: "test",
-      usage: [
-        { id: "incineroar", name: "Incineroar", count: 40, pct: 40 },
-        { id: "garchomp", name: "Garchomp", count: 20, pct: 20 },
-      ],
-      byId: {
-        incineroar: { moves: [{ name: "Tailwind", pct: 100 }], items: [], abilities: [], natures: [] },
-        garchomp: { moves: [{ name: "Swords Dance", pct: 100 }], items: [], abilities: [], natures: [] },
-      },
-    }
-    const report = archetypeCoverage([mon("charizard", ["Icy Wind", "Extreme Speed"])], dex, plans)
-    expect(report.archetypes.map((a) => a.id)).toEqual(["tailwind", "setup"])
-    // (1 × 40 + ⅓ × 20) / 60.
-    expect(report.score).toBeCloseTo((40 + 20 / 3) / 60, 5)
   })
 })
 
