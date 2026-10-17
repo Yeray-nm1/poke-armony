@@ -44,9 +44,8 @@ pnpm build      # build de producción
 La armonía se lee de las dos barras del cuadro de métricas: **cobertura ofensiva**
 alta ⇒ armonía alta; **redundancia** (items y tipos primarios duplicados) la
 recorta. El resto del diagnóstico —**cierre de amenazas** (titular «Sin respuesta
-a…» + listas con daño real), **equilibrio defensivo** (chips «Debilidades»),
-**velocidad** (bloque propio) y **foco de roles** (planes del equipo, que la UI no
-pinta; el demo lo imprime en consola)— informa pero **no puntúa**. El
+a…» + listas con daño real), **equilibrio defensivo** (chips «Debilidades») y
+**velocidad** (bloque propio)— informa pero **no puntúa**. El
 recomendador es contrafactual (puntúa el equipo antes/después
 de cada edición y rankea por **Δ armonía**), de menor a mayor invasividad:
 ① ajuste → ② rehacer → ③ sustitución (cualquier Pokémon legal; el uso del meta solo ordena).

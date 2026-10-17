@@ -1,6 +1,6 @@
 // Demo en consola con datos reales: diagnóstico + recomendaciones.
 // Uso: pnpm demo   (ingiere en vivo desde Showdown y Limitless)
-import { analyze, groupProposals, proposeEdits, roleFocus, teamCompatibility, type Team } from "../src/core"
+import { analyze, groupProposals, proposeEdits, teamCompatibility, type Team } from "../src/core"
 import { fetchBase } from "../src/lib/dataset"
 import { fetchMeta } from "../src/lib/meta"
 
@@ -39,11 +39,6 @@ async function main() {
     if (a.nakedTypes.length) console.log(`  Debilidades apiladas sin resistencia: ${a.nakedTypes.join(", ")}`)
     if (a.offenseGaps.length) console.log(`  Huecos ofensivos: ${a.offenseGaps.join(", ")}`)
     if (a.unanswered.length) console.log(`  Amenazas sin respuesta: ${a.unanswered.join(", ")}`)
-    const focus = roleFocus(team, pokedex, moves, meta)
-    for (const plan of focus.plans) {
-      const failed = plan.checks.filter((c) => !c.ok).map((c) => c.label)
-      if (failed.length) console.log(`  Plan ${plan.label}: ✗ ${failed.join(" · ")}`)
-    }
 
     const compat = teamCompatibility(team, pokedex, moves, meta)
     if (compat.synergies.length || compat.conflicts.length) {
