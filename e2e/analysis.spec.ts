@@ -4,6 +4,7 @@ import { gotoWorkspace, storedTeamIds, storedTeamJson } from "./helpers"
 test("aplica una recomendación y el cambio queda guardado", async ({ page }) => {
   await gotoWorkspace(page)
 
+  await page.getByRole("tab", { name: /Sugerencias/ }).click()
   const aplicar = page.getByRole("button", { name: "Aplicar" })
   await expect(aplicar.first()).toBeVisible()
 
@@ -23,6 +24,7 @@ test("aplica una recomendación y el cambio queda guardado", async ({ page }) =>
 test("el comparador muestra el antes y el después sin aplicar", async ({ page }) => {
   await gotoWorkspace(page)
 
+  await page.getByRole("tab", { name: /Sugerencias/ }).click()
   const comparar = page.getByTitle("Comparar antes de aplicar")
   await expect(comparar.first()).toBeVisible()
   await comparar.first().click()
