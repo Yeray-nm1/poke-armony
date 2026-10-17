@@ -70,10 +70,14 @@ export function DiagnosisPanel({
     [deferredTeam, dataset],
   )
 
-  // Recomendaciones con DAÑO real (servidor). Se adoptan solo si corresponden al
-  // equipo vigente; si no, se sigue mostrando la vista previa local.
+  // Recomendaciones con DAÑO real (servidor). Para el DIAGNÓSTICO se aplica
+  // stale-while-revalidate: mientras el servidor recalcula se mantiene el último
+  // veredicto (en vez de volver a la preview local), así los chips «Sin respuesta
+  // a…» cambian una sola vez (servidor→servidor) y no parpadean entre tipos y daño
+  // real. Las PROPUESTAS sí usan la preview local mientras tanto: son acciones y
+  // tienen que corresponder al equipo vigente.
   const [refined, setRefined] = useState<{ team: Team; analysis: Analysis; proposals: Proposal[] } | null>(null)
-  const [tab, setTab] = useState<"suggestions" | "threats">("suggestions")
+  const [tab, setTab] = useState<"resumen" | "suggestions" | "threats">("resumen")
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -96,10 +100,12 @@ export function DiagnosisPanel({
   }, [deferredTeam])
 
   const authoritative = refined && refined.team === deferredTeam ? refined : null
-  const analysis = authoritative?.analysis ?? local.base
+  const analysis = refined?.analysis ?? local.base
   const proposals = authoritative?.proposals ?? local.proposals
   const refining = authoritative === null
   const { tune, remake, swap } = useMemo(() => groupProposals(proposals), [proposals])
+  // Mejora máxima disponible: se enseña en la cabecera como «▲+N».
+  const bestDelta = useMemo(() => proposals.reduce((a, p) => Math.max(a, p.delta), 0), [proposals])
 
   // Escenario de campo (Velocidad). El toggle solo cambia qué escenario precalculado
   // se muestra; la armonía se recompone con la velocidad elegida, sin recalcular.
@@ -152,310 +158,52 @@ export function DiagnosisPanel({
 
   return (
     <section className="rise space-y-6 [animation-delay:140ms]">
-      <Panel className="space-y-5">
+      <Panel className="space-y-4">
         <SectionTitle
           right={
-            refining ? (
+            <span className="flex items-center gap-2.5">
+              {refining ? (
+                <span
+                  /* La clase retrasa la aparición 400 ms: mismo indicador, sin
+                     parpadeo a cada cambio de equipo (ver globals.css). */
+                  className="delayed-ping flex items-center gap-1.5 text-[10px] text-faint"
+                  title="El servidor está recalculando la armonía con daño real (motor del juego)…"
+                >
+                  <span aria-hidden className="h-1.5 w-1.5 animate-ping rounded-full bg-warn" />
+                  calculando daño real…
+                </span>
+              ) : null}
               <span
-                className="flex items-center gap-1.5 text-[10px] text-faint"
-                title="El servidor está recalculando la armonía con daño real (motor del juego)…"
+                className="flex items-baseline gap-1.5"
+                title="Armonía del equipo (con daño real cuando termina el recálculo)"
               >
-                <span aria-hidden className="h-1.5 w-1.5 animate-ping rounded-full bg-warn" />
-                calculando daño real…
+                <span className="num text-lg font-bold leading-none text-fg">{analysis.harmony}</span>
+                {bestDelta > 0 && !refining ? (
+                  <span
+                    className="num text-[10px] font-semibold text-brand"
+                    title={`Mejora máxima disponible en Sugerencias: +${bestDelta}`}
+                  >
+                    ▲+{bestDelta}
+                  </span>
+                ) : null}
               </span>
-            ) : null
+            </span>
           }
         >
           Diagnóstico
         </SectionTitle>
 
-        <div className="space-y-3 border-t border-line/70 pt-4">
-          <span className="label text-muted">Resumen</span>
-          <div className="flex items-center gap-5">
-            <div className="relative shrink-0">
-              <Gauge value={analysis.harmony / 100} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="num text-3xl font-bold leading-none text-fg">{analysis.harmony}</span>
-              <span className="label mt-1">/ 100</span>
-            </div>
-          </div>
-          <div className="min-w-0 flex-1 space-y-2.5">
-            {analysis.unanswered.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-faint">Sin respuesta a:</span>
-                {analysis.unanswered.map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onOpenThreat(id)}
-                    className="rounded-md border border-bad/35 bg-bad/12 px-1.5 py-0.5 text-bad transition-colors hover:bg-bad/20"
-                  >
-                    {nameOf(id)}
-                  </button>
-                ))}
-              </div>
-            )}
-            {analysis.offenseGaps.length > 0 && (
-              <div
-                className="flex flex-wrap items-center gap-1.5 text-xs"
-                title="Amenazas del meta a las que ningún movimiento del equipo golpea súper efectivo (aunque puedas hacerles KO con daño neutro)"
-              >
-                <span className="text-faint">Sin golpe súper efectivo:</span>
-                {analysis.offenseGaps.map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onOpenThreat(id)}
-                    className="rounded-md border border-warn/35 bg-warn/12 px-1.5 py-0.5 text-warn transition-colors hover:bg-warn/20"
-                  >
-                    {nameOf(id)}
-                  </button>
-                ))}
-              </div>
-            )}
-
-          </div>
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t border-line/70 pt-4">
-          <span className="label text-muted">Métricas de armonía</span>
-          <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-          {Object.entries(analysis.metrics).map(([k, v]) => (
-            <MetricBar
-              key={k}
-              label={METRIC_LABEL[k] ?? k}
-              hint={METRIC_HINT[k]}
-              value={v}
-              invert={k === "redundancy"}
-              icon={<MetricIcon metric={k} />}
-            />
-          ))}
-          </div>
-
-          <div className="space-y-1.5 border-t border-line/70 pt-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5">
-                <span className="label text-muted">Velocidad</span>
-                <Hint text={METRIC_HINT.speed} />
-              </span>
-              {available.length > 1 ? (
-                <div
-                  role="radiogroup"
-                  aria-label="Escenario de campo para la velocidad"
-                  className="flex items-center gap-0.5 rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5"
-                >
-                  {available.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      role="radio"
-                      aria-checked={activeField === f}
-                      onClick={() => setField(f)}
-                      title={FIELD_HINT[f]}
-                      className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                        activeField === f
-                          ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
-                          : "text-muted hover:bg-ink-800/60 hover:text-fg"
-                      }`}
-                    >
-                      {f === "none" ? null : <MetricIcon metric="speed" />}
-                      {FIELD_LABEL[f]}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-[10px] text-faint">añade Tailwind o Trick Room para ver otros escenarios</span>
-              )}
-            </div>
-            {speed.teamSize > 0 ? (
-              <>
-                {slowMember && fastMember && (
-                  <p className="text-xs text-muted">
-                    Rango del equipo: <span className="text-fg">{slowMember.name}</span>{" "}
-                    <span className="num text-faint">{slowMember.speed}</span>
-                    {" – "}
-                    <span className="text-fg">{fastMember.name}</span>{" "}
-                    <span className="num text-faint">{fastMember.speed}</span>
-                  </p>
-                )}
-                <details className="group">
-                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
-                    <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                    Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
-                  </summary>
-                  <div className="mt-2.5 space-y-3">
-                    <div>
-                      <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
-                      <ul className="space-y-1">
-                        {speed.members.map((m) => {
-                          const cov = m.coverage[activeField]
-                          return (
-                            <li key={m.id} className="flex items-center gap-2">
-                              <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
-                                {m.name}
-                              </span>
-                              <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
-                              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
-                                <span
-                                  className="block h-full rounded-full bg-brand transition-[width] duration-500"
-                                  style={{ width: `${Math.max(cov * 100, 2)}%` }}
-                                />
-                              </span>
-                              <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
-                                {Math.round(cov * 100)}%
-                              </span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                      {incomplete.length > 0 && (
-                        <p className="mt-1.5 flex items-center gap-1 text-[10px] text-faint">
-                          <span className="text-warn">
-                            Falta completar el set en {incomplete.length} de {speed.teamSize} Pokémon
-                          </span>
-                          <Hint text={incompleteHint} align="start" />
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="label mb-1.5 text-muted">
-                        Por amenaza · cuántas de tus {speed.teamSize} la superan
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {race.map((t) => {
-                          const b = t.beats[activeField]
-                          const isSelected = selectedThreat?.id === t.id
-                          const tone =
-                            b === 0
-                              ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
-                              : b === speed.teamSize
-                                ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
-                                : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              aria-pressed={isSelected}
-                              onClick={() => setRaceThreat(t.id)}
-                              title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
-                              className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone} ${
-                                isSelected ? "ring-2 ring-fg/35" : ""
-                              }`}
-                            >
-                              {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {selectedThreat && (
-                        <div className="mt-2 rounded-lg border border-line/70 bg-ink-950/40 p-2">
-                          <p className="flex flex-wrap items-baseline gap-x-1.5 text-[11px]">
-                            <span className="text-fg">{selectedThreat.name}</span>
-                            <span className="num text-faint">{selectedThreat.speed}</span>
-                            <span className="text-faint">· uso {selectedThreat.pct}%</span>
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-faint">{SCENARIO_NOTE[activeField]}</p>
-                          <div className="mt-1.5 flex items-center gap-2 text-[9px] uppercase tracking-wide text-faint/70">
-                            <span className="w-20 shrink-0">Pieza</span>
-                            <span className="w-8 shrink-0 text-right">Vel.</span>
-                            <span className="w-12 shrink-0 text-right">Ventaja</span>
-                            <span className="flex-1" />
-                          </div>
-                          <ul className="space-y-0.5">
-                            {speed.members.map((m) => {
-                              const margin = speedMargin(m.speed, selectedThreat.speed, activeField)
-                              const ahead = margin > 0
-                              return (
-                                <li key={m.id} className="flex items-center gap-2 text-[11px]">
-                                  <span className="w-20 shrink-0 truncate text-fg" title={m.name}>
-                                    {m.name}
-                                  </span>
-                                  <span className="num w-8 shrink-0 text-right text-muted">
-                                    {effectiveSpeed(m.speed, activeField)}
-                                  </span>
-                                  <span className={`num w-12 shrink-0 text-right ${ahead ? "text-brand" : "text-bad"}`}>
-                                    {margin > 0 ? `+${margin}` : margin}
-                                  </span>
-                                  <span className={`flex-1 ${ahead ? "text-brand" : "text-bad"}`}>
-                                    {ahead ? "actúa antes" : "actúa después"}
-                                  </span>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </details>
-              </>
-            ) : (
-              <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="surface-inset relative p-4">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-[11px] opacity-[0.06]"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(-45deg, var(--color-fg) 0 1px, transparent 1px 7px)",
-            }}
-          />
-          <div className="relative">
-            <VulnerableTypes coverage={analysis.typeCoverage} />
-          </div>
-        </div>
-      </Panel>
-
-      <Panel className="space-y-4">
-        {/* Pestañas: compactan la derecha; solo se renderiza la sección activa. */}
-        <div role="tablist" aria-label="Análisis del equipo" className="flex rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "suggestions"}
+        {/* Tres pestañas en la misma card: el estado (Resumen) y las acciones
+            (Sugerencias · Amenazas) sin salir de la cabecera. */}
+        <div role="tablist" aria-label="Diagnóstico" className="flex rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5">
+          <TabButton label="Resumen" active={tab === "resumen"} onClick={() => setTab("resumen")} />
+          <TabButton
+            label="Sugerencias"
+            count={proposals.length}
+            active={tab === "suggestions"}
             onClick={() => setTab("suggestions")}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-display text-xs font-semibold tracking-wide transition-colors ${
-              tab === "suggestions"
-                ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
-                : "text-muted hover:bg-ink-800/60 hover:text-fg"
-            }`}
-          >
-            Sugerencias
-            <span
-              aria-hidden
-              className={`grid h-4 min-w-4 place-items-center rounded-full px-1 font-mono text-[9px] leading-none ${
-                tab === "suggestions" ? "bg-brand/20 text-brand" : "bg-ink-800 text-muted"
-              }`}
-            >
-              {proposals.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "threats"}
-            onClick={() => setTab("threats")}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-display text-xs font-semibold tracking-wide transition-colors ${
-              tab === "threats"
-                ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
-                : "text-muted hover:bg-ink-800/60 hover:text-fg"
-            }`}
-          >
-            Amenazas
-            <span
-              aria-hidden
-              className={`grid h-4 min-w-4 place-items-center rounded-full px-1 font-mono text-[9px] leading-none ${
-                tab === "threats" ? "bg-brand/20 text-brand" : "bg-ink-800 text-muted"
-              }`}
-            >
-              {threats.length}
-            </span>
-          </button>
+          />
+          <TabButton label="Amenazas" count={threats.length} active={tab === "threats"} onClick={() => setTab("threats")} />
         </div>
 
         <motion.div
@@ -464,7 +212,249 @@ export function DiagnosisPanel({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "suggestions" ? (
+          {tab === "resumen" ? (
+            <div className="space-y-5">
+              <div className="space-y-3">
+                <span className="label text-muted">Resumen</span>
+                <div className="flex items-center gap-5">
+                  <div className="relative shrink-0">
+                    <Gauge value={analysis.harmony / 100} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="num text-3xl font-bold leading-none text-fg">{analysis.harmony}</span>
+                      <span className="label mt-1">/ 100</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2.5">
+                    {analysis.unanswered.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-faint">Sin respuesta a:</span>
+                        {analysis.unanswered.map((id) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => onOpenThreat(id)}
+                            className="rounded-md border border-bad/35 bg-bad/12 px-1.5 py-0.5 text-bad transition-colors hover:bg-bad/20"
+                          >
+                            {nameOf(id)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {analysis.offenseGaps.length > 0 && (
+                      <div
+                        className="flex flex-wrap items-center gap-1.5 text-xs"
+                        title="Amenazas del meta a las que ningún movimiento del equipo golpea súper efectivo (aunque puedas hacerles KO con daño neutro)"
+                      >
+                        <span className="text-faint">Sin golpe súper efectivo:</span>
+                        {analysis.offenseGaps.map((id) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => onOpenThreat(id)}
+                            className="rounded-md border border-warn/35 bg-warn/12 px-1.5 py-0.5 text-warn transition-colors hover:bg-warn/20"
+                          >
+                            {nameOf(id)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-line/70 pt-4">
+                <span className="label text-muted">Métricas de armonía</span>
+                <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+                  {Object.entries(analysis.metrics).map(([k, v]) => (
+                    <MetricBar
+                      key={k}
+                      label={METRIC_LABEL[k] ?? k}
+                      hint={METRIC_HINT[k]}
+                      value={v}
+                      invert={k === "redundancy"}
+                      icon={<MetricIcon metric={k} />}
+                    />
+                  ))}
+                </div>
+
+                <div className="space-y-1.5 border-t border-line/70 pt-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5">
+                      <span className="label text-muted">Velocidad</span>
+                      <Hint text={METRIC_HINT.speed} />
+                    </span>
+                    {available.length > 1 ? (
+                      <div
+                        role="radiogroup"
+                        aria-label="Escenario de campo para la velocidad"
+                        className="flex items-center gap-0.5 rounded-lg border border-line-2/70 bg-ink-950/60 p-0.5"
+                      >
+                        {available.map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            role="radio"
+                            aria-checked={activeField === f}
+                            onClick={() => setField(f)}
+                            title={FIELD_HINT[f]}
+                            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                              activeField === f
+                                ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
+                                : "text-muted hover:bg-ink-800/60 hover:text-fg"
+                            }`}
+                          >
+                            {f === "none" ? null : <MetricIcon metric="speed" />}
+                            {FIELD_LABEL[f]}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-faint">añade Tailwind o Trick Room para ver otros escenarios</span>
+                    )}
+                  </div>
+                  {speed.teamSize > 0 ? (
+                    <>
+                      {slowMember && fastMember && (
+                        <p className="text-xs text-muted">
+                          Rango del equipo: <span className="text-fg">{slowMember.name}</span>{" "}
+                          <span className="num text-faint">{slowMember.speed}</span>
+                          {" – "}
+                          <span className="text-fg">{fastMember.name}</span>{" "}
+                          <span className="num text-faint">{fastMember.speed}</span>
+                        </p>
+                      )}
+                      <details className="group">
+                        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
+                          <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                          Ver desglose · {speed.teamSize} piezas y {race.length} amenazas
+                        </summary>
+                        <div className="mt-2.5 space-y-3">
+                          <div>
+                            <p className="label mb-1.5 text-muted">Por pieza · % del meta que adelanta</p>
+                            <ul className="space-y-1">
+                              {speed.members.map((m) => {
+                                const cov = m.coverage[activeField]
+                                return (
+                                  <li key={m.id} className="flex items-center gap-2">
+                                    <span className="w-24 shrink-0 truncate text-xs text-fg" title={m.name}>
+                                      {m.name}
+                                    </span>
+                                    <span className="num w-7 shrink-0 text-right text-[11px] text-faint">{m.speed}</span>
+                                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-950 ring-1 ring-inset ring-line/70">
+                                      <span
+                                        className="block h-full rounded-full bg-brand transition-[width] duration-500"
+                                        style={{ width: `${Math.max(cov * 100, 2)}%` }}
+                                      />
+                                    </span>
+                                    <span className="num w-8 shrink-0 text-right text-[11px] text-muted">
+                                      {Math.round(cov * 100)}%
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                            {incomplete.length > 0 && (
+                              <p className="mt-1.5 flex items-center gap-1 text-[10px] text-faint">
+                                <span className="text-warn">
+                                  Falta completar el set en {incomplete.length} de {speed.teamSize} Pokémon
+                                </span>
+                                <Hint text={incompleteHint} align="start" />
+                              </p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="label mb-1.5 text-muted">
+                              Por amenaza · cuántas de tus {speed.teamSize} la superan
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {race.map((t) => {
+                                const b = t.beats[activeField]
+                                const isSelected = selectedThreat?.id === t.id
+                                const tone =
+                                  b === 0
+                                    ? "border-bad/35 bg-bad/12 text-bad hover:bg-bad/20"
+                                    : b === speed.teamSize
+                                      ? "border-brand/35 bg-brand/12 text-brand hover:bg-brand/20"
+                                      : "border-warn/35 bg-warn/12 text-warn hover:bg-warn/20"
+                                return (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    aria-pressed={isSelected}
+                                    onClick={() => setRaceThreat(t.id)}
+                                    title={`${t.name} · velocidad ${t.speed} · uso ${t.pct}% — ${b}/${speed.teamSize} de tu equipo le gana la carrera`}
+                                    className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${tone} ${
+                                      isSelected ? "ring-2 ring-fg/35" : ""
+                                    }`}
+                                  >
+                                    {t.name} <span className="num font-semibold">{b}/{speed.teamSize}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {selectedThreat && (
+                              <div className="mt-2 rounded-lg border border-line/70 bg-ink-950/40 p-2">
+                                <p className="flex flex-wrap items-baseline gap-x-1.5 text-[11px]">
+                                  <span className="text-fg">{selectedThreat.name}</span>
+                                  <span className="num text-faint">{selectedThreat.speed}</span>
+                                  <span className="text-faint">· uso {selectedThreat.pct}%</span>
+                                </p>
+                                <p className="mt-0.5 text-[10px] text-faint">{SCENARIO_NOTE[activeField]}</p>
+                                <div className="mt-1.5 flex items-center gap-2 text-[9px] uppercase tracking-wide text-faint/70">
+                                  <span className="w-20 shrink-0">Pieza</span>
+                                  <span className="w-8 shrink-0 text-right">Vel.</span>
+                                  <span className="w-12 shrink-0 text-right">Ventaja</span>
+                                  <span className="flex-1" />
+                                </div>
+                                <ul className="space-y-0.5">
+                                  {speed.members.map((m) => {
+                                    const margin = speedMargin(m.speed, selectedThreat.speed, activeField)
+                                    const ahead = margin > 0
+                                    return (
+                                      <li key={m.id} className="flex items-center gap-2 text-[11px]">
+                                        <span className="w-20 shrink-0 truncate text-fg" title={m.name}>
+                                          {m.name}
+                                        </span>
+                                        <span className="num w-8 shrink-0 text-right text-muted">
+                                          {effectiveSpeed(m.speed, activeField)}
+                                        </span>
+                                        <span className={`num w-12 shrink-0 text-right ${ahead ? "text-brand" : "text-bad"}`}>
+                                          {margin > 0 ? `+${margin}` : margin}
+                                        </span>
+                                        <span className={`flex-1 ${ahead ? "text-brand" : "text-bad"}`}>
+                                          {ahead ? "actúa antes" : "actúa después"}
+                                        </span>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </details>
+                    </>
+                  ) : (
+                    <p className="text-xs text-faint">Añade miembros al equipo para medir la carrera.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="surface-inset relative p-4">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-[11px] opacity-[0.06]"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(-45deg, var(--color-fg) 0 1px, transparent 1px 7px)",
+                  }}
+                />
+                <div className="relative">
+                  <VulnerableTypes coverage={analysis.typeCoverage} />
+                </div>
+              </div>
+            </div>
+          ) : tab === "suggestions" ? (
             <div className="space-y-4">
               <p className="text-xs text-faint">Mejoras por Δ armonía, de la menos a la más invasiva: ① ajuste → ② rehacer → ③ sustituir.</p>
               {proposals.length === 0 && (
@@ -539,6 +529,45 @@ export function DiagnosisPanel({
         </motion.div>
       </Panel>
     </section>
+  )
+}
+
+/** Pestaña del cuadro de Diagnóstico, con contador opcional. */
+function TabButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count?: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-display text-xs font-semibold tracking-wide transition-colors ${
+        active
+          ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_rgba(61,220,151,0.35)]"
+          : "text-muted hover:bg-ink-800/60 hover:text-fg"
+      }`}
+    >
+      {label}
+      {count !== undefined && (
+        <span
+          aria-hidden
+          className={`grid h-4 min-w-4 place-items-center rounded-full px-1 font-mono text-[9px] leading-none ${
+            active ? "bg-brand/20 text-brand" : "bg-ink-800 text-muted"
+          }`}
+        >
+          {count}
+        </span>
+      )}
+    </button>
   )
 }
 
