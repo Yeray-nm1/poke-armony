@@ -39,10 +39,6 @@ async function main() {
     if (a.nakedTypes.length) console.log(`  Debilidades apiladas sin resistencia: ${a.nakedTypes.join(", ")}`)
     if (a.offenseGaps.length) console.log(`  Huecos ofensivos: ${a.offenseGaps.join(", ")}`)
     if (a.unanswered.length) console.log(`  Amenazas sin respuesta: ${a.unanswered.join(", ")}`)
-    for (const plan of a.roleFocus.plans) {
-      const failed = plan.checks.filter((c) => !c.ok).map((c) => c.label)
-      if (failed.length) console.log(`  Plan ${plan.label}: ✗ ${failed.join(" · ")}`)
-    }
 
     const compat = teamCompatibility(team, pokedex, moves, meta)
     if (compat.synergies.length || compat.conflicts.length) {

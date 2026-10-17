@@ -39,11 +39,14 @@ pnpm build      # build de producción
 
 ## El motor (`src/core`)
 
-`harmony = 100 · Σ(peso · métrica) − penalización_redundancia`
+`harmony = 100 · (cobertura_ofensiva − 0,10 · redundancia)`
 
-Métricas: **defensa**, **cobertura ofensiva**, **cierre de amenazas**, **roles**,
-**velocidad** y **sinergia** (menos **redundancia**). El diagnóstico son las 2–3
-métricas más bajas; el recomendador es contrafactual (puntúa el equipo antes/después
+La armonía se lee de las dos barras del cuadro de métricas: **cobertura ofensiva**
+alta ⇒ armonía alta; **redundancia** (items y tipos primarios duplicados) la
+recorta. El resto del diagnóstico —**cierre de amenazas** (titular «Sin respuesta
+a…» + listas con daño real), **equilibrio defensivo** (chips «Debilidades») y
+**velocidad** (bloque propio)— informa pero **no puntúa**. El
+recomendador es contrafactual (puntúa el equipo antes/después
 de cada edición y rankea por **Δ armonía**), de menor a mayor invasividad:
 ① ajuste → ② rehacer → ③ sustitución (cualquier Pokémon legal; el uso del meta solo ordena).
 
