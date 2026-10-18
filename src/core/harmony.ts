@@ -20,11 +20,14 @@ export const speciesOf = (dex: Pokedex, id: string): SpeciesData | undefined => 
  * Reparto del gauge. De los pesos salieron primero Aguante, Foco y Arquetipos
  * (como barras no distinguían equipos) y ahora la Velocidad: el gauge mezclaba
  * una métrica que no se ve en los números y no se deducía de ellos. Queda la
- * ofensiva —lo único que el gauge debe medir— con la redundancia como
- * penalización directa, así que el número se lee de las barras: cobertura
- * ofensiva alta ⇒ armonía alta, redundancia alta ⇒ la recorta.
+ * ofensiva —lo único que el gauge debe medir— con dos penalizaciones directas
+ * (redundancia y peso de meta sin respaldo), así que el número se lee de las
+ * tres barras: ofensiva alta ⇒ armonía alta, redundancia o respaldo ausente ⇒
+ * la recortan.
  */
 const REDUNDANCY_WEIGHT = 0.10
+/** Penalización por el peso de meta que NO cierran 2+ piezas (cierre sin respaldo). */
+const BACKUP_WEIGHT = 0.10
 const TOP_N = 20
 
 const attackingTypes = (set: TeamSet, moves: MoveDex): string[] =>
@@ -86,32 +89,109 @@ export function commonAttackTypes(stats: SetStats | undefined, moves: MoveDex): 
   return [...byType.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map((e) => e[0])
 }
 
+export interface CriticalPiece {
+  slot: number
+  id: string
+  name: string
+  /** Amenazas del top que solo esta pieza cierra (mismo criterio que el cierre). */
+  threats: string[]
+  /** Peso de uso acumulado de esas amenazas (% del top considerado). */
+  pct: number
+}
+
+/**
+ * Punto único de fallo. De las amenazas del top, `backed` es el peso de uso de
+ * las que cierran DOS o más piezas —si una cae, queda respaldo—; `pieces` lista,
+ * por ranura, las que cierra una sola —si esa pieza no sale en team preview, esa
+ * respuesta desaparece—. Las amenazas sin respuesta no cuentan aquí: ya las
+ * nombra el titular «Sin respuesta a…».
+ */
+export interface Criticality {
+  /** % de uso del top cuya respuesta tiene respaldo (2+ piezas). */
+  backed: number
+  /** Nº de amenazas del top con respaldo, sobre las consideradas. */
+  backedCount: number
+  total: number
+  pieces: CriticalPiece[]
+}
+
+/**
+ * Agrega la matriz «quién responde a quién» (ranuras por amenaza, mismo orden que
+ * `top`) en el indicador de respaldo. Compartido por el cierre por tipos y el de
+ * daño real, de modo que cliente y servidor derivan el dato del mismo cierre que
+ * pueblan sus «Sin respuesta a…».
+ */
+export function criticalityOf(
+  top: { id: string; pct: number }[],
+  answerers: number[][],
+  team: Team,
+  dex: Pokedex,
+): Criticality {
+  const totalPct = top.reduce((a, u) => a + u.pct, 0)
+  let backedPct = 0
+  let backedCount = 0
+  const singles = new Map<number, { threats: string[]; pct: number }>()
+  top.forEach((u, i) => {
+    const solvers = answerers[i] ?? []
+    if (solvers.length >= 2) {
+      backedPct += u.pct
+      backedCount++
+    } else if (solvers.length === 1) {
+      const rec = singles.get(solvers[0]) ?? { threats: [], pct: 0 }
+      rec.threats.push(u.id)
+      rec.pct += u.pct
+      singles.set(solvers[0], rec)
+    }
+  })
+  const pieces = [...singles.entries()]
+    .map(([slot, r]) => ({
+      slot,
+      id: team[slot]?.id ?? "",
+      name: speciesOf(dex, team[slot]?.id ?? "")?.name ?? team[slot]?.id ?? "",
+      threats: r.threats,
+      pct: r.pct,
+    }))
+    .sort((a, b) => b.pct - a.pct)
+  return { backed: totalPct ? backedPct / totalPct : 0, backedCount, total: top.length, pieces }
+}
+
 export function threatClosure(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta) {
   const top = meta.usage.slice(0, TOP_N).filter((u) => speciesOf(dex, u.id))
   const total = top.reduce((a, u) => a + u.pct, 0)
   const unanswered: string[] = []
+  const answerers: number[][] = []
   let answered = 0
   for (const u of top) {
     const oppTypes = speciesOf(dex, u.id)!.types
     const fromOpp = commonAttackTypes(meta.byId[u.id], moves)
     const oppAtk = fromOpp.length ? fromOpp : oppTypes
-    // "Fuerte" real: resiste los ataques principales de la amenaza, no es débil
-    // a ninguno, y la golpea de forma súper efectiva. El golpe neutro no cuenta.
-    const hasAnswer = team.some((s) => {
+    // "Fuerte" por tipos, calibrado contra el cierre con daño real: no es débil
+    // a los ataques comunes de la amenaza (aguanta su golpeo) y le pega con
+    // potencia — súper eficaz o un golpe de ≥60 de potencia. Exigirle además que
+    // resista algo y que golpee SE hundía el respaldo (19% donde el daño real
+    // daba 97%); el golpe neutro con potencia ya cuenta, como en el daño real.
+    const solvers: number[] = []
+    team.forEach((s, slot) => {
       const pTypes = speciesOf(dex, s.id)?.types
-      if (!pTypes) return false
+      if (!pTypes) return
       const noWeak = oppAtk.every((at) => effVs(at, pTypes) <= 1)
-      const resists = oppAtk.some((at) => effVs(at, pTypes) < 1)
       const threatens = s.attacks.some((mvn) => {
         const m = moves[toId(mvn)]
-        return !!m && m.category !== "Status" && m.basePower > 0 && effVs(m.type, oppTypes) >= 2
+        if (!m || m.category === "Status" || m.basePower <= 0) return false
+        return effVs(m.type, oppTypes) >= 2 || m.basePower >= 60
       })
-      return noWeak && resists && threatens
+      if (noWeak && threatens) solvers.push(slot)
     })
-    if (hasAnswer) answered += u.pct
+    answerers.push(solvers)
+    if (solvers.length) answered += u.pct
     else unanswered.push(u.id)
   }
-  return { score: total ? answered / total : 0, unanswered, top: top.map((u) => u.id) }
+  return {
+    score: total ? answered / total : 0,
+    unanswered,
+    top: top.map((u) => u.id),
+    criticality: criticalityOf(top, answerers, team, dex),
+  }
 }
 
 export const SETUP_MOVES = [
@@ -340,9 +420,17 @@ export interface TypeCoverage {
 
 export interface Analysis {
   harmony: number
-  metrics: { offense: number; redundancy: number }
+  /**
+   * Las tres barras = los tres términos del gauge. `backup` (peso del meta
+   * respaldado por 2+ piezas) es SIEMPRE por tipos, también en el servidor: el
+   * gauge no parpadea al llegar el daño real; ese detalle se muestra aparte
+   * («Punto único de fallo») con `criticality`, que sí se refina con daño real.
+   */
+  metrics: { offense: number; redundancy: number; backup: number }
   /** Velocidad por escenario de campo (no entra en `metrics`: el gauge la ignora). */
   speedScenarios: Record<Field, number>
+  /** Punto único de fallo: qué amenazas dependen de UNA sola pieza (informativo). */
+  criticality: Criticality
   unanswered: string[]
   offenseGaps: string[]
   nakedTypes: string[]
@@ -355,15 +443,20 @@ export interface Analysis {
  * cliente); en el servidor se sustituye por uno calculado con daño real
  * (`@smogon/calc`), sin que la librería entre en el bundle del navegador.
  */
-export type ClosureFn = (team: Team) => { score: number; unanswered: string[] }
+export type ClosureFn = (team: Team) => { score: number; unanswered: string[]; criticality: Criticality }
 
 export interface AnalyzeOptions {
   closure?: ClosureFn
 }
 
-/** Armonía compuesta a partir de las métricas (fuente única para cliente y servidor). */
+/**
+ * Armonía compuesta a partir de las métricas (fuente única para cliente y
+ * servidor): ofensiva, salvo la redundancia y el peso de meta sin respaldo.
+ */
 export function harmonyFromMetrics(metrics: Analysis["metrics"]): number {
-  return +(100 * clamp01(metrics.offense - REDUNDANCY_WEIGHT * metrics.redundancy)).toFixed(1)
+  return +(100 * clamp01(
+    metrics.offense - REDUNDANCY_WEIGHT * metrics.redundancy - BACKUP_WEIGHT * (1 - metrics.backup),
+  )).toFixed(1)
 }
 
 export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, opts: AnalyzeOptions = {}): Analysis {
@@ -373,7 +466,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
   const sp = speedProfile(team, dex, meta)
   const red = redundancy(team, dex)
 
-  const metrics = { offense: o.score, redundancy: red }
+  const metrics = { offense: o.score, redundancy: red, backup: t.criticality.backed }
   const harmony = harmonyFromMetrics(metrics)
 
   const typeCoverage: TypeCoverage[] = d.breakdown.map((b) => ({
@@ -384,6 +477,7 @@ export function analyze(team: Team, dex: Pokedex, moves: MoveDex, meta: Meta, op
 
   return {
     harmony: +harmony.toFixed(1), metrics, speedScenarios: sp.scenarios,
+    criticality: t.criticality,
     unanswered: t.unanswered,
     offenseGaps: o.gaps, nakedTypes: d.breakdown.filter((b) => b.weak >= 2 && b.resist === 0).map((b) => b.type),
     typeCoverage,

@@ -111,6 +111,14 @@ describe("cierre de amenazas con daño real", () => {
     expect(damageClosure(noAnswer, dex, meta).unanswered).toContain("incineroar")
     expect(damageClosure(answer, dex, meta).unanswered).not.toContain("incineroar")
   })
+
+  it("expone el punto único de fallo con daño real", () => {
+    const c = damageClosure(team, dex, meta)
+    // Incineroar solo lo cierra Blastoise de verdad (Charizard aguanta sin tumbar
+    // y Magnezone no calcula) → pieza crítica en la ranura 0.
+    const incin = c.criticality.pieces.find((p) => p.threats.includes("incineroar"))
+    expect(incin).toMatchObject({ slot: 0, id: "blastoise" })
+  })
 })
 
 // Stats oficiales de las Megas nuevas de Champions, contrastadas con Game8

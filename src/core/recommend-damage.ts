@@ -41,15 +41,16 @@ export function recommendWithDamage(
   ]
 
   // Titular de cierre con daño REAL: la armonía no cambia (ya no lleva cierre),
-  // pero la lista «Sin respuesta a…» sí sale del motor del juego.
+  // pero la lista «Sin respuesta a…» y el punto único de fallo sí salen del
+  // motor del juego (mismos matchups, ya cacheados).
   const baseClosure = damageClosure(team, dex, meta)
-  const analysis: Analysis = { ...base, unanswered: baseClosure.unanswered }
+  const analysis: Analysis = { ...base, unanswered: baseClosure.unanswered, criticality: baseClosure.criticality }
 
   const refined: Proposal[] = []
   for (const p of chosen) {
     const candidate = team.map((s, i) => (i === p.slot ? p.nextSet : s))
     const closure = damageClosure(candidate, dex, meta)
-    const after: Analysis = { ...p.after, unanswered: closure.unanswered }
+    const after: Analysis = { ...p.after, unanswered: closure.unanswered, criticality: closure.criticality }
     refined.push({ ...p, after, fixes: improvedMetrics(analysis, after) })
   }
 

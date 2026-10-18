@@ -39,13 +39,22 @@ pnpm build      # build de producción
 
 ## El motor (`src/core`)
 
-`harmony = 100 · (cobertura_ofensiva − 0,10 · redundancia)`
+`harmony = 100 · (cobertura_ofensiva − 0,10 · redundancia − 0,10 · (1 − respaldo))`
 
-La armonía se lee de las dos barras del cuadro de métricas: **cobertura ofensiva**
-alta ⇒ armonía alta; **redundancia** (items y tipos primarios duplicados) la
-recorta. El resto del diagnóstico —**cierre de amenazas** (titular «Sin respuesta
-a…» + listas con daño real), **equilibrio defensivo** (chips «Debilidades») y
-**velocidad** (bloque propio)— informa pero **no puntúa**. El
+La armonía se lee de las tres barras del cuadro de métricas: **cobertura ofensiva**
+alta ⇒ armonía alta; **redundancia** (items y tipos primarios duplicados) y el
+**cierre con respaldo** (peso del meta que NO cierran 2+ piezas: si una pieza cae,
+queda respuesta) la recortan. Las tres barras son **por tipos** —estables entre
+cliente y servidor: el gauge no cambia mientras el servidor calcula— y componen la
+fórmula; el criterio del respaldo está **calibrado contra el daño real** (aguanta los
+ataques comunes de la amenaza y le pega con potencia —SE o ≥60—), de modo que la
+preview por tipos no desmiente a los bloques con daño real de abajo. El resto del
+diagnóstico —**cierre de amenazas** (titular «Sin respuesta
+a…» + listas con daño real), el aviso **«Punto único de fallo»** (qué amenazas
+dependen de UNA sola pieza, con daño real), **equilibrio defensivo** (chips
+«Debilidades») y **velocidad** (bloque propio)— informa pero **no puntúa**. Al
+primer arranque, esos veredictos con daño real esperan en esqueleto en lugar de
+enseñar la preview por tipos (que cambiaría al cargar). El
 recomendador es contrafactual (puntúa el equipo antes/después
 de cada edición y rankea por **Δ armonía**), de menor a mayor invasividad:
 ① ajuste → ② rehacer → ③ sustitución (cualquier Pokémon legal; el uso del meta solo ordena).

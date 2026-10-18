@@ -74,9 +74,13 @@ export function DiagnosisPanel({
   // stale-while-revalidate: mientras el servidor recalcula se mantiene el último
   // veredicto (en vez de volver a la preview local), así los chips «Sin respuesta
   // a…» cambian una sola vez (servidor→servidor) y no parpadean entre tipos y daño
-  // real. Las PROPUESTAS sí usan la preview local mientras tanto: son acciones y
-  // tienen que corresponder al equipo vigente.
+  // real. En el PRIMER arranque no hay todavía ningún veredicto real que mantener:
+  // hasta que llega, los veredictos esperan en esqueleto (`booting`) en vez de
+  // enseñar la preview por tipos, que sería un «falso reporte» que cambia al cargar.
+  // Las PROPUESTAS sí usan la preview local mientras tanto: son acciones y tienen
+  // que corresponder al equipo vigente.
   const [refined, setRefined] = useState<{ team: Team; analysis: Analysis; proposals: Proposal[] } | null>(null)
+  const [realFailed, setRealFailed] = useState(false)
   const [tab, setTab] = useState<"resumen" | "suggestions" | "threats">("resumen")
   useEffect(() => {
     const controller = new AbortController()
@@ -91,7 +95,11 @@ export function DiagnosisPanel({
           r.ok ? (r.json() as Promise<{ analysis: Analysis; proposals: Proposal[] }>) : Promise.reject(new Error(String(r.status))),
         )
         .then((d) => setRefined({ team: deferredTeam, analysis: d.analysis, proposals: d.proposals }))
-        .catch(() => {})
+        .catch((e: unknown) => {
+          // Abort por cambio de equipo en vuelo: no es fallo, sigue la espera.
+          if (e instanceof DOMException && e.name === "AbortError") return
+          setRealFailed(true)
+        })
     }, 250)
     return () => {
       clearTimeout(timer)
@@ -102,7 +110,11 @@ export function DiagnosisPanel({
   const authoritative = refined && refined.team === deferredTeam ? refined : null
   const analysis = refined?.analysis ?? local.base
   const proposals = authoritative?.proposals ?? local.proposals
-  const refining = authoritative === null
+  const refining = authoritative === null && !realFailed
+  // Sin ningún análisis real todavía (y sin fallo): los veredictos con daño real
+  // esperan en esqueleto en lugar de mostrar la preview por tipos, que cambiaría
+  // al llegar el servidor. Tras el primer resultado solo manda el SWR de arriba.
+  const booting = refined === null && !realFailed
   const { tune, remake, swap } = useMemo(() => groupProposals(proposals), [proposals])
   // Mejora máxima disponible: se enseña en la cabecera como «▲+N».
   const bestDelta = useMemo(() => proposals.reduce((a, p) => Math.max(a, p.delta), 0), [proposals])
@@ -178,7 +190,7 @@ export function DiagnosisPanel({
                 title="Armonía del equipo (con daño real cuando termina el recálculo)"
               >
                 <span className="num text-lg font-bold leading-none text-fg">{analysis.harmony}</span>
-                {bestDelta > 0 && !refining ? (
+                {bestDelta > 0 ? (
                   <span
                     className="num text-[10px] font-semibold text-brand"
                     title={`Mejora máxima disponible en Sugerencias: +${bestDelta}`}
@@ -199,7 +211,9 @@ export function DiagnosisPanel({
           <TabButton label="Resumen" active={tab === "resumen"} onClick={() => setTab("resumen")} />
           <TabButton
             label="Sugerencias"
-            count={proposals.length}
+            /* Recuento local: el servidor solo re-puntúa los mejores por nivel, y
+               el número saltaría en cada carga/revalidación si se tomara de él. */
+            count={local.proposals.length}
             active={tab === "suggestions"}
             onClick={() => setTab("suggestions")}
           />
@@ -225,7 +239,13 @@ export function DiagnosisPanel({
                     </div>
                   </div>
                   <div className="min-w-0 flex-1 space-y-2.5">
-                    {analysis.unanswered.length > 0 && (
+                    {booting ? (
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label="Calculando el cierre con daño real…">
+                        <span className="text-faint">Sin respuesta a:</span>
+                        <span aria-hidden className="h-5 w-14 animate-pulse rounded-md bg-ink-800 ring-1 ring-inset ring-line/70" />
+                        <span aria-hidden className="h-5 w-20 animate-pulse rounded-md bg-ink-800 ring-1 ring-inset ring-line/70" />
+                      </div>
+                    ) : analysis.unanswered.length > 0 ? (
                       <div className="flex flex-wrap items-center gap-1.5 text-xs">
                         <span className="text-faint">Sin respuesta a:</span>
                         {analysis.unanswered.map((id) => (
@@ -239,7 +259,7 @@ export function DiagnosisPanel({
                           </button>
                         ))}
                       </div>
-                    )}
+                    ) : null}
                     {analysis.offenseGaps.length > 0 && (
                       <div
                         className="flex flex-wrap items-center gap-1.5 text-xs"
@@ -276,6 +296,37 @@ export function DiagnosisPanel({
                     />
                   ))}
                 </div>
+
+                {!booting && analysis.criticality.pieces.length > 0 && (
+                  <div className="space-y-1.5 border-t border-line/70 pt-3.5">
+                    <span className="label text-muted">Punto único de fallo</span>
+                    <ul className="space-y-1">
+                      {analysis.criticality.pieces.map((p) => (
+                        <li key={p.slot} className="flex flex-wrap items-center gap-1.5 text-xs">
+                          <span className="text-warn" aria-hidden>
+                            ⚠
+                          </span>
+                          <span className="font-medium text-fg">{p.name}</span>
+                          <span className="text-muted">
+                            única respuesta a {p.threats.length} {p.threats.length === 1 ? "amenaza" : "amenazas"} ·{" "}
+                            {Math.round(p.pct)}% del peso del meta
+                          </span>
+                          {p.threats.slice(0, 5).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => onOpenThreat(t)}
+                              className="rounded-md border border-warn/35 bg-warn/12 px-1.5 py-0.5 text-warn transition-colors hover:bg-warn/20"
+                            >
+                              {nameOf(t)}
+                            </button>
+                          ))}
+                          {p.threats.length > 5 && <span className="text-faint">+{p.threats.length - 5}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="space-y-1.5 border-t border-line/70 pt-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -474,7 +525,9 @@ export function DiagnosisPanel({
               </div>
               <ul className="space-y-1">
                 {threats.map((u) => {
-                  const answered = !unanswered.has(toId(u.id))
+                  // Durante la primera carga la marca sería de tipos (preview): se
+                  // queda neutra hasta tener el cierre real.
+                  const answered = booting ? null : !unanswered.has(toId(u.id))
                   const types = speciesOf(dataset.pokedex, u.id)?.types ?? []
                   return (
                     <li key={u.id}>
@@ -487,15 +540,21 @@ export function DiagnosisPanel({
                         <span className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1">
                           <span
                             className={`grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-bold ${
-                              answered ? "bg-brand/15 text-brand" : "bg-bad/15 text-bad"
+                              answered === null
+                                ? "bg-ink-800 text-faint"
+                                : answered
+                                  ? "bg-brand/15 text-brand"
+                                  : "bg-bad/15 text-bad"
                             }`}
                             title={
-                              answered
-                                ? "Alguien del equipo la aguanta y puede hacerle KO (con daño real)"
-                                : "Nadie del equipo responde (con daño real)"
+                              answered === null
+                                ? "Calculando el cierre con daño real…"
+                                : answered
+                                  ? "Alguien del equipo la aguanta y puede hacerle KO (con daño real)"
+                                  : "Nadie del equipo responde (con daño real)"
                             }
                           >
-                            {answered ? "✔" : "✖"}
+                            {answered === null ? "…" : answered ? "✔" : "✖"}
                           </span>
                           <span className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="truncate text-fg">{u.name}</span>

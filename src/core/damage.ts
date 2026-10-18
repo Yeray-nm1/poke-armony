@@ -5,7 +5,8 @@
 // demás del motor es tipo-based y rápido); lo usa el informe de amenaza, que se
 // calcula en el servidor para no inflar el bundle del cliente.
 import { calculate, Generations, Move, Pokemon, toID } from "@smogon/calc"
-import { speciesOf } from "./harmony"
+import { criticalityOf, speciesOf } from "./harmony"
+import type { Criticality } from "./harmony"
 import { natureEffect } from "./stats"
 import { evaluateThreat } from "./threat"
 import type { ThreatReport } from "./threat"
@@ -266,18 +267,28 @@ export function damageMatchups(team: Team, threatId: string, dex: Pokedex, meta:
  * la responde de verdad (aguanta la peor tirada Y puede hacerle KO). Misma regla
  * que el panel de amenaza. `unanswered` es la lista de amenazas sin respuesta.
  */
-export function damageClosure(team: Team, dex: Pokedex, meta: Meta, topN = 20): { score: number; unanswered: string[] } {
+export function damageClosure(
+  team: Team,
+  dex: Pokedex,
+  meta: Meta,
+  topN = 20,
+): { score: number; unanswered: string[]; criticality: Criticality } {
   const gen = championGen()
   const top = meta.usage.slice(0, topN).filter((u) => speciesOf(dex, u.id))
   const total = top.reduce((a, u) => a + u.pct, 0)
   const unanswered: string[] = []
+  const answerers: number[][] = []
   let answered = 0
   for (const u of top) {
-    const ok = team.some((set, slot) => memberDamage(gen, set, slot, u.id, dex, meta).answers)
-    if (ok) answered += u.pct
+    const solvers: number[] = []
+    team.forEach((set, slot) => {
+      if (memberDamage(gen, set, slot, u.id, dex, meta).answers) solvers.push(slot)
+    })
+    answerers.push(solvers)
+    if (solvers.length) answered += u.pct
     else unanswered.push(u.id)
   }
-  return { score: total ? answered / total : 0, unanswered }
+  return { score: total ? answered / total : 0, unanswered, criticality: criticalityOf(top, answerers, team, dex) }
 }
 
 /** Informe completo: tipos + set común + matchup real por miembro. */
