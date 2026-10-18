@@ -1,6 +1,6 @@
 // Cálculo de stats a Nivel 50 (31 IVs) con el sistema de Stat Points de Champions.
 // 1 SP = 8 EV ⇒ a L50 cada SP vale exactamente 1 punto de stat.
-import { STAT_KEYS, type SpeciesData, type StatKey, type TeamSet } from "./types"
+import { STAT_KEYS, type MoveDex, type SpeciesData, type StatKey, type TeamSet } from "./types"
 
 export const LEVEL = 50
 export const IV = 31
@@ -114,6 +114,76 @@ export function normalizeSpread(sp?: TeamSet["sp"]): Partial<Record<StatKey, num
     if (values[i] > 0) out[k] = values[i]
   })
   return out
+}
+
+/** Normalización de id de Showdown (misma regla que `toId` de harmony, aquí en
+ *  línea para no crear un ciclo de imports stats ↔ harmony). */
+const idOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+/**
+ * Reparto de Stat Points **sugerido**, solo a petición del usuario (el botón del
+ * editor); nunca se aplica automáticamente.
+ *
+ * - **Papel**: manda la potencia por categoría de los movimientos elegidos; sin
+ *   datos de movimientos, la naturaleza que sube una stat de ataque; si no, la
+ *   base más alta. Con solo movimientos de estado → apoyo.
+ * - **Velocidad**: lento si el set lleva Trick Room o la naturaleza resta
+ *   velocidad (Brave/Relaxed/Quiet/Sassy); rápido en caso contrario.
+ * - **Reparto**: siempre 32 + 32 + 2 = 66 (legal por construcción):
+ *   - atacante rápido: papel 32 · velocidad 32 · PS 2
+ *   - atacante lento: papel 32 · PS 32 · mejor defensa 2
+ *   - apoyo rápido: PS 32 · velocidad 32 · mejor defensa 2
+ *   - apoyo lento: PS 32 · mejor defensa 32 · otra defensa 2
+ *
+ * Devuelve solo las stats con valor > 0 (como `normalizeSpread`).
+ */
+export function suggestSpread(
+  species: SpeciesData,
+  set: TeamSet,
+  moves?: MoveDex,
+): Partial<Record<StatKey, number>> {
+  const eff = natureEffect(set.nature)
+  const base = species.baseStats
+
+  const slow = eff.minus === "spe" || set.attacks.some((a) => idOf(a) === "trickroom")
+
+  // Potencia elegida por categoría (solo movimientos dañinos con datos).
+  let physBp = 0
+  let specBp = 0
+  let known = 0
+  let damaging = 0
+  for (const name of set.attacks) {
+    if (!name) continue
+    const m = moves?.[idOf(name)]
+    if (!m) continue
+    known += 1
+    if (m.category === "Status" || m.basePower <= 0) continue
+    damaging += 1
+    if (m.category === "Physical") physBp += m.basePower
+    else specBp += m.basePower
+  }
+  const support = known > 0 && damaging === 0
+
+  const primary: StatKey =
+    physBp > specBp
+      ? "atk"
+      : specBp > physBp
+        ? "spa"
+        : eff.plus === "atk" || eff.plus === "spa"
+          ? eff.plus
+          : base.atk >= base.spa
+            ? "atk"
+            : "spa"
+
+  // Mejor defensa: la que sube la naturaleza, o la base más alta (empate → Def).
+  const bestDef: StatKey =
+    eff.plus === "def" || eff.plus === "spd" ? eff.plus : base.def >= base.spd ? "def" : "spd"
+  const otherDef: StatKey = bestDef === "def" ? "spd" : "def"
+
+  if (support) {
+    return slow ? { hp: 32, [bestDef]: 32, [otherDef]: 2 } : { hp: 32, spe: 32, [bestDef]: 2 }
+  }
+  return slow ? { [primary]: 32, hp: 32, [bestDef]: 2 } : { [primary]: 32, spe: 32, hp: 2 }
 }
 
 /** Efecto de una naturaleza: neutra, o el stat que sube (+) y el que baja (−). */

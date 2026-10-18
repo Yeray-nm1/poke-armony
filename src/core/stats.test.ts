@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { clampSp, isValidSpread, maxSpAllowed, natureEffect, normalizeSpread, spUsed, statAt50 } from "./stats"
-import type { StatKey, TeamSet } from "./types"
+import { clampSp, isValidSpread, maxSpAllowed, natureEffect, normalizeSpread, spUsed, statAt50, suggestSpread } from "./stats"
+import type { MoveDex, SpeciesData, StatKey, TeamSet } from "./types"
 
 describe("stats a L50 (1 SP = 1 punto)", () => {
   it("Garchomp (spe base 102) Jolly con 32 SP llega a 169", () => {
@@ -81,6 +81,85 @@ describe("normalizar reparto al importar", () => {
 
   it("redondea, descarta no positivos y trata NaN como 0", () => {
     expect(normalizeSpread({ hp: 12.4, atk: -3, def: Number.NaN })).toEqual({ hp: 12 })
+  })
+})
+
+describe("reparto sugerido (solo a petición, nunca automático)", () => {
+  const spec = (base?: Partial<SpeciesData["baseStats"]>): SpeciesData => ({
+    types: ["Normal"],
+    baseStats: { hp: 100, atk: 100, def: 100, spa: 100, spd: 100, spe: 100, ...base },
+  })
+  const MOVES: MoveDex = {
+    earthquake: { type: "Ground", category: "Physical", basePower: 100 },
+    rockslide: { type: "Rock", category: "Physical", basePower: 75 },
+    flamethrower: { type: "Fire", category: "Special", basePower: 90 },
+    heatwave: { type: "Fire", category: "Special", basePower: 95 },
+    protect: { type: "Normal", category: "Status", basePower: 0 },
+    willowisp: { type: "Fire", category: "Status", basePower: 0 },
+    swordsdance: { type: "Normal", category: "Status", basePower: 0 },
+    trickroom: { type: "Psychic", category: "Status", basePower: 0 },
+  }
+  const set = (attacks: string[], nature?: string): TeamSet => ({ id: "x", attacks, nature })
+
+  it("atacante rápido: la categoría con más potencia manda (físico → Atq)", () => {
+    const sp = suggestSpread(spec(), set(["Earthquake", "Rock Slide", "Protect", "Swords Dance"]), MOVES)
+    expect(sp).toEqual({ atk: 32, spe: 32, hp: 2 })
+    expect(isValidSpread({ id: "x", attacks: [], sp }).ok).toBe(true)
+    expect(spUsed({ id: "x", attacks: [], sp })).toBe(66)
+  })
+
+  it("la potencia de los movimientos manda sobre la naturaleza", () => {
+    // Adamant sube Atq, pero todos los movimientos elegidos son especiales.
+    const sp = suggestSpread(spec(), set(["Flamethrower", "Heat Wave", "Protect", "Will-O-Wisp"], "Adamant"), MOVES)
+    expect(sp).toEqual({ spa: 32, spe: 32, hp: 2 })
+  })
+
+  it("fallback sin dex de movimientos: manda la base (y el set vacío también)", () => {
+    const physical = spec({ atk: 130, spa: 80 })
+    expect(suggestSpread(physical, set(["Earthquake"], undefined), undefined)).toEqual({ atk: 32, spe: 32, hp: 2 })
+    expect(suggestSpread(physical, set([]), MOVES)).toEqual({ atk: 32, spe: 32, hp: 2 })
+  })
+
+  it("Trick Room en el set → atacante lento, sin velocidad", () => {
+    const sp = suggestSpread(spec(), set(["Flamethrower", "Heat Wave", "Protect", "Trick Room"]), MOVES)
+    expect(sp).toEqual({ spa: 32, hp: 32, def: 2 })
+    expect(sp.spe).toBeUndefined()
+  })
+
+  it("naturaleza que resta velocidad (Quiet) → lento aunque no lleve TR", () => {
+    const sp = suggestSpread(spec(), set(["Flamethrower", "Protect"], "Quiet"), MOVES)
+    expect(sp).toEqual({ spa: 32, hp: 32, def: 2 })
+  })
+
+  it("solo movimientos de estado → apoyo rápido (PS + velocidad)", () => {
+    const sp = suggestSpread(spec(), set(["Protect", "Will-O-Wisp", "Swords Dance"]), MOVES)
+    expect(sp).toEqual({ hp: 32, spe: 32, def: 2 })
+  })
+
+  it("apoyo lento (TR) → PS + doble defensa y 2 a la otra", () => {
+    const sp = suggestSpread(spec(), set(["Protect", "Will-O-Wisp", "Trick Room"]), MOVES)
+    expect(sp).toEqual({ hp: 32, def: 32, spd: 2 })
+  })
+
+  it("la mejor defensa la elige la naturaleza si sube una", () => {
+    const sp = suggestSpread(spec(), set(["Protect", "Will-O-Wisp"], "Calm"), MOVES)
+    expect(sp).toEqual({ hp: 32, spe: 32, spd: 2 })
+  })
+
+  it("cualquier combinación produce un reparto legal de 66 SP", () => {
+    const sets = [
+      set(["Earthquake", "Rock Slide", "Protect", "Swords Dance"]),
+      set(["Flamethrower", "Heat Wave", "Protect", "Trick Room"]),
+      set(["Protect", "Will-O-Wisp", "Swords Dance"]),
+      set(["Protect", "Will-O-Wisp", "Trick Room"], "Sassy"),
+      set([]),
+      set(["Earthquake"], "Jolly"),
+    ]
+    for (const s of sets) {
+      const full: TeamSet = { ...s, sp: suggestSpread(spec({ def: 60, spd: 140 }), s, MOVES) }
+      expect(isValidSpread(full).ok).toBe(true)
+      expect(spUsed(full)).toBe(66)
+    }
   })
 })
 
