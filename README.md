@@ -89,6 +89,10 @@ Trick Room invertido— y recompone el gauge al instante, sin recalcular.
   **velocidad a L50 con SP y naturaleza reales** y **roster legal M-C + las 6 Megas nuevas**
   (Absol-Z, Garchomp-Z, Lucario-Z, Salamence, Golisopod, Baxcalibur) como candidatas.
 - **Recomendador por niveles**: ① ajuste → ② rehacer (misma especie, otro rol) → ③ sustitución.
+- **Reparto de SP sugerido** («✦ Sugerido» en el editor): rellena 32 + 32 + 2 = 66 según el papel
+  de la pieza (la potencia por categoría de sus movimientos manda; sin datos, la naturaleza; si no,
+  la stat base) y su modo (sin velocidad si lleva Trick Room o la naturaleza la resta; solo estados
+  ⇒ apoyo). Solo a petición del usuario —nunca automático— y sustituye el reparto actual.
 - **Daño real en el recomendador**: el cierre de amenazas deja de ser por tipos y pasa a daño/KO
   reales. El cliente genera candidatos al instante y el servidor (`/api/recommend`) re-puntúa el
   equipo base y los mejores candidatos de cada nivel con `@smogon/calc`.

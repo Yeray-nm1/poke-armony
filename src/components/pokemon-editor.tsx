@@ -18,6 +18,7 @@ import {
   speciesOf,
   spUsed,
   statsAt50,
+  suggestSpread,
   toId,
 } from "@/core"
 import type { Dataset, StatKey } from "@/core"
@@ -91,6 +92,11 @@ function EditorBody({ slot, dataset, moveOptions }: { slot: number; dataset: Dat
 
   const resetMoves = () => update(slot, { attacks: [] })
   const resetSp = () => update(slot, { sp: {} })
+  /** Reparto sugerido de SP según movimientos y naturaleza (sustituye el actual). */
+  const applySuggestedSp = () => {
+    if (!species) return
+    update(slot, { sp: suggestSpread(species, set, movesDex) })
+  }
 
   /** Reordena las ranuras de movimiento (arrastre o teclado en el asa). */
   const reorderMoves = (from: number, to: number) => {
@@ -282,7 +288,7 @@ function EditorBody({ slot, dataset, moveOptions }: { slot: number; dataset: Dat
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2">
             <span className="label">Stat Points</span>
             <button
@@ -296,6 +302,17 @@ function EditorBody({ slot, dataset, moveOptions }: { slot: number; dataset: Dat
               </span>
               Reset
             </button>
+            {species && (
+              <button
+                type="button"
+                onClick={applySuggestedSp}
+                title="Aplicar un reparto sugerido para su papel (sustituye el reparto actual)"
+                className="inline-flex items-center gap-1 rounded-md border border-line-2/70 bg-ink-800/70 px-2 py-0.5 font-display text-[11px] font-medium text-faint transition-colors hover:border-brand/60 hover:bg-brand/10 hover:text-brand"
+              >
+                <Sparkles aria-hidden className="h-3 w-3" />
+                Sugerido
+              </button>
+            )}
           </span>
           <span className="flex items-center gap-2">
             {remaining > 0 ? (
