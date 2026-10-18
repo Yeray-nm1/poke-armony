@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { dex, meta, moves } from "./fixtures"
 import {
-  analyze, defensiveBalance, offensiveCoverage, redundancy, speciesOf, speedProfile, threatClosure,
+  analyze, defensiveBalance, harmonyFromMetrics, offensiveCoverage, redundancy, speciesOf, speedProfile, threatClosure,
 } from "./harmony"
 import type { Meta, Pokedex, Team, TeamSet } from "./types"
 
@@ -69,9 +69,70 @@ describe("cierre de amenazas", () => {
     expect(r.score).toBeGreaterThan(0)
   })
 
-  it("no considera contra a quien no amenaza", () => {
+  it("cuenta la respuesta neutral con potencia (calibrado contra el daño real)", () => {
+    // Charizard aguanta el Fuego común de Incineroar y le pega con Flamethrower
+    // (neutro, 90 de potencia): el daño real lo cuenta, y el proxy por tipos ya
+    // no lo desarma exigiendo un golpe súper efectivo.
     const team: Team = [mon("charizard", ["Flamethrower", "Protect"])]
-    expect(threatClosure(team, dex, moves, meta).unanswered).toContain("incineroar")
+    expect(threatClosure(team, dex, moves, meta).unanswered).not.toContain("incineroar")
+  })
+
+  it("no cuenta a quien es débil a los ataques comunes de la amenaza", () => {
+    // Magnezone batea Eléctrico: Charizard (Fuego/Volador) es débil — no aguanta, no responde.
+    const team: Team = [mon("charizard", ["Flamethrower", "Protect"])]
+    expect(threatClosure(team, dex, moves, meta).unanswered).toContain("magnezone")
+  })
+})
+
+describe("pieza crítica (punto único de fallo)", () => {
+  it("señala la única pieza que cierra una amenaza", () => {
+    const team: Team = [mon("blastoise", ["Surf", "Protect"])]
+    const c = threatClosure(team, dex, moves, meta).criticality
+    // Blastoise es el único que cierra Incineroar (Surf SE), Garchomp (Surf SE
+    // a Dragón/Tierra), Lycanroc (Surf SE a Roca) y Togekiss (Surf de
+    // potencia); solo Magnezone se le escapa (le pega Eléctrico y es débil).
+    expect(c.pieces).toEqual([
+      { slot: 0, id: "blastoise", name: "Blastoise", threats: ["incineroar", "garchomp", "lycanroc", "togekiss"], pct: 53 },
+    ])
+    expect(c.backedCount).toBe(0)
+    expect(c.backed).toBe(0)
+    expect(c.total).toBe(5)
+  })
+
+  it("con dos respuestas la amenaza queda respaldada", () => {
+    const team: Team = [mon("blastoise", ["Surf", "Protect"]), mon("lycanroc", ["Rock Slide", "Protect"])]
+    const r = threatClosure(team, dex, moves, meta)
+    const c = r.criticality
+    // Surf (Agua) y Rock Slide (Roca) cierran Incineroar entre los dos, igual
+    // que Togekiss; Garchomp y Lycanroc los cierra solo Blastoise (Lycanroc
+    // teme a Tierra) y Magnezone solo Lycanroc (Blastoise teme a Eléctrico).
+    expect(c.pieces).toEqual([
+      { slot: 0, id: "blastoise", name: "Blastoise", threats: ["garchomp", "lycanroc"], pct: 25 },
+      { slot: 1, id: "lycanroc", name: "Lycanroc", threats: ["magnezone"], pct: 5 },
+    ])
+    expect(c.backedCount).toBe(2) // incineroar + togekiss
+    expect(c.backed).toBeCloseTo(28 / 58, 5)
+    expect(r.unanswered).toEqual([])
+  })
+
+  it("reparte el top entre respaldadas, únicas y sin respuesta", () => {
+    const team: Team = [mon("togekiss", ["Moonblast", "Protect"]), mon("blastoise", ["Surf", "Protect"])]
+    const r = threatClosure(team, dex, moves, meta)
+    // Con Surf potente y Moonblast, los dos cierran juntos Incineroar,
+    // Garchomp, Lycanroc y Togekiss; solo Magnezone queda sin respuesta: los
+    // dos temen a Eléctrico (Togekiss es Volador).
+    expect(r.criticality.pieces).toEqual([])
+    expect(r.criticality.backedCount).toBe(4)
+    expect(r.unanswered).toEqual(["magnezone"])
+    const singles = r.criticality.pieces.reduce((a, p) => a + p.threats.length, 0)
+    expect(r.criticality.backedCount + singles + r.unanswered.length).toBe(r.criticality.total)
+  })
+
+  it("analyze expone el cierre con respaldo y admite equipos vacíos", () => {
+    const team: Team = [mon("blastoise", ["Surf", "Protect"])]
+    expect(analyze(team, dex, moves, meta).criticality).toEqual(threatClosure(team, dex, moves, meta).criticality)
+    const empty = analyze([], dex, moves, meta).criticality
+    expect(empty).toMatchObject({ backed: 0, backedCount: 0, pieces: [] })
   })
 })
 
@@ -230,6 +291,19 @@ describe("resolución de ids (con/sin guion)", () => {
 describe("armonía compuesta", () => {
   it("el equipo equilibrado armoniza más que el mono-Fuego", () => {
     expect(analyze(balancedTeam, dex, moves, meta).harmony).toBeGreaterThan(analyze(fireTeam, dex, moves, meta).harmony)
+  })
+
+  it("el respaldo cuenta en el gauge (−0,10 por el peso de meta sin respaldo)", () => {
+    expect(harmonyFromMetrics({ offense: 0.8, redundancy: 0, backup: 1 })).toBe(80)
+    expect(harmonyFromMetrics({ offense: 0.8, redundancy: 0, backup: 0.5 })).toBe(75)
+    expect(harmonyFromMetrics({ offense: 0.8, redundancy: 0, backup: 0 })).toBe(70)
+  })
+
+  it("metrics.backup es el respaldo del cierre y recorta la armonía", () => {
+    const a = analyze(balancedTeam, dex, moves, meta)
+    expect(a.metrics.backup).toBeCloseTo(a.criticality.backed, 10)
+    // Con respaldo completo sería al menos lo mismo: el hueco resta, nunca suma.
+    expect(a.harmony).toBeLessThanOrEqual(harmonyFromMetrics({ ...a.metrics, backup: 1 }))
   })
 
   it("todas las métricas y la armonía caen en rango", () => {

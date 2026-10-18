@@ -6,7 +6,7 @@
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { ChevronDown, Info, Layers, Swords, Timer } from "lucide-react"
+import { ChevronDown, Info, Layers, ShieldCheck, Swords, Timer } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { StatKey, Tier, TypeCoverage } from "@/core"
 
@@ -188,6 +188,7 @@ export const METRIC_LABEL: Record<string, string> = {
   offense: "Cobertura ofensiva",
   speed: "Velocidad",
   redundancy: "Redundancia",
+  backup: "Cierre con respaldo",
 }
 
 /** Icono por categoría de armonía. */
@@ -195,6 +196,7 @@ export const METRIC_ICON: Record<string, LucideIcon> = {
   offense: Swords,
   speed: Timer,
   redundancy: Layers,
+  backup: ShieldCheck,
 }
 
 export function MetricIcon({ metric, className }: { metric: string; className?: string }) {
@@ -234,6 +236,7 @@ export const METRIC_HINT: Record<string, string> = {
   offense: "Amenazas del meta a las que algún movimiento del equipo golpea súper efectivo, ponderado por su uso",
   speed: "Por cada amenaza del top, cuántos de tus miembros están por encima en velocidad. El selector de campo cambia el escenario: sin control, Tailwind ×2 o Trick Room invertido.",
   redundancy: "Solapamiento de roles y tipos entre miembros — cuanto menos, mejor",
+  backup: "Peso del meta cuya respuesta cierran DOS o más de tus piezas — si una cae, queda respaldo. Cuenta en la armonía: el peso sin respaldo la recorta (−0,10 por la unidad).",
 }
 
 /** Metadatos de los niveles de recomendación (① ajuste → ③ sustitución). */
